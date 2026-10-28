@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Windows (Git Bash) port of build-and-install.sh: builds the launcher APK with the bare SDK tools
+# and installs it on the TV over adb as the home screen.
+#   launcher/build-windows.sh            build + install
+#   launcher/build-windows.sh --build    build only
+# Env: JAVA_HOME, ANDROID_HOME, BUILD_TOOLS (version folder), PLATFORM (android-NN), ADB (path to
+#      adb.exe), TV_HOST (TV IP), STOCK_LAUNCHER, DISABLE_SETUPWRAITH=1 (Google TV only).
+set -euo pipefail
+cd "$(dirname "$0")"
+
+JAVA_HOME="${JAVA_HOME:-/c/Program Files/Microsoft/jdk-17.0.21.21-hotspot}"
+SDK="${ANDROID_HOME:-/c/Program Files (x86)/Android/android-sdk}"
+BT="$SDK/build-tools/${BUILD_TOOLS:-36.0.0}"
+JAR="$SDK/platforms/${PLATFORM:-android-35}/android.jar"
+ADB="${ADB:-$LOCALAPPDATA/Microsoft/WinGet/Packages/Google.PlatformTools_Microsoft.Winget.Source_8wekyb3d8bbwe/platform-tools/adb.exe}"
+TV="${TV_HOST:-192.168.100.19}:${TV_PORT:-5555}"
+# Sony / older Android TV: com.google.android.tvlauncher. Google TV sets: com.google.android.apps.tv.launcherx
+STOCK_LAUNCHER="${STOCK_LAUNCHER:-com.google.android.tvlauncher}"
+export PATH="$JAVA_HOME/bin:$PATH"
+B=build
+W() { cygpath -w "$1"; }   # the .bat/.exe tools want Windows paths
+
+rm -rf "$B" && mkdir -p "$B/gen" "$B/classes" "$B/dex"
+"$BT/aapt2.exe" compile --dir res -o "$B/res.zip"
+# Assets are NOT passed to aapt2 here: on Windows it writes their zip entries with backslashes
+# (assets/wallpapers\01.jpg), which AssetManager.list() can't see. jar adds them below instead.
+"$BT/aapt2.exe" link -o "$B/base.apk" -I "$(W "$JAR")" --manifest AndroidManifest.xml --java "$B/gen" \
+  --min-sdk-version 30 --target-sdk-version 30 "$B/res.zip"
+javac -nowarn -Xlint:-options -encoding UTF-8 --release 11 -classpath "$(W "$JAR")" -d "$B/classes" \
+  $(find src "$B/gen" -name '*.java')
+java -cp "$(W "$BT/lib/d8.jar")" com.android.tools.r8.D8 --min-api 30 --lib "$(W "$JAR")" \
+  --output "$(W "$B/dex")" $(find "$B/classes" -name '*.class')
+cp "$B/base.apk" "$B/unsigned.apk"
+jar --update --file "$B/unsigned.apk" --no-manifest --no-compress -C "$B/dex" classes.dex -C . assets
+"$BT/zipalign.exe" -f 4 "$B/unsigned.apk" "$B/aligned.apk"
+[ -f debug.keystore ] || keytool -genkeypair -keystore debug.keystore -storepass android -keypass android \
+  -alias tvhome -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=tvhome" >/dev/null 2>&1
+java -jar "$(W "$BT/lib/apksigner.jar")" sign --ks debug.keystore --ks-pass pass:android \
+  --out "$B/tvhome.apk" "$B/aligned.apk"
+echo "built $B/tvhome.apk ($(wc -c < "$B/tvhome.apk") bytes)"
+[ "${1:-}" = "--build" ] && exit 0
+
+"$ADB" connect "$TV" >/dev/null
+sh() { echo "\$ $*"; "$ADB" -s "$TV" shell "$@"; }   # one pm call per shell: chained pm calls can stop early
+snap="$B/backup-$(date +%Y%m%d-%H%M%S).txt"
+{ echo "# home before install:"; "$ADB" -s "$TV" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -1
+  echo "# enabled packages before install:"; "$ADB" -s "$TV" shell pm list packages -e; } > "$snap"
+echo "saved $snap"
+"$ADB" -s "$TV" install -r "$B/tvhome.apk"
+sh pm grant com.mihir.tvhome android.permission.ACCESS_FINE_LOCATION
+sh cmd package set-home-activity --user 0 com.mihir.tvhome/.MainActivity
+sh pm disable-user --user 0 "$STOCK_LAUNCHER"
+if [ "${DISABLE_SETUPWRAITH:-0}" = "1" ]; then sh pm disable-user --user 0 com.google.android.tungsten.setupwraith; fi
+sh cmd package set-home-activity --user 0 com.mihir.tvhome/.MainActivity
+sh am force-stop com.android.tv.settings
+sh am force-stop com.mihir.tvhome
+sh input keyevent KEYCODE_HOME
+echo "Installed. Press Home on the remote. Undo with tools/restore-windows.sh"

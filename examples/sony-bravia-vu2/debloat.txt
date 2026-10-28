@@ -1,0 +1,33 @@
+# Sony BRAVIA VU2 (BRAVIA_VU1_4K, Realtek), Android 11, build RTT7.210923.001, 2 GB RAM
+# Everything here is DISABLED for user 0, never uninstalled.
+# Apply over adb:  for p in $(grep -vE '^\s*(#|$)' this-file | awk '{print $1}'); do adb shell pm disable-user --user 0 $p; done
+# Undo:            tools/restore-windows.sh examples/sony-bravia-vu2/debloat.txt
+# Stock launcher (com.google.android.tvlauncher) is disabled by launcher/build-windows.sh, not here.
+# Answers for this household: keeps Chromecast, Assistant voice search, Spotify Connect, Prime Video.
+
+# Google extras
+com.google.android.videos              # Google TV / Play Movies
+com.google.android.play.games
+com.google.android.youtube.tvmusic     # YouTube Music
+com.google.android.tvrecommendations   # home-screen recommendation rows
+com.google.android.feedback
+com.google.android.backdrop            # ambient screensaver with recommendations
+com.google.android.syncadapters.calendar
+
+# AOSP leftovers that make no sense on a TV
+com.android.dreams.basic
+com.android.gallery3d
+com.android.camera2
+com.android.printspooler
+com.android.wallpaper.livepicker
+
+# Sony demos and help content
+com.sony.dtv.multiscreendemo
+com.sony.dtv.smarthelp
+com.sony.dtv.helpguidecontents
+
+# Also applied (not package disables): background execution blocked for apps that auto-start at boot.
+#   cmd appops set <pkg> RUN_IN_BACKGROUND ignore; cmd appops set <pkg> RUN_ANY_IN_BACKGROUND ignore
+#   for com.wbd.stream, com.tm.unifitv.tv, org.videolan.vlc, com.netflix.ninja
+#   Undo: cmd appops set <pkg> RUN_ANY_IN_BACKGROUND allow (and RUN_IN_BACKGROUND allow)
+# Animation scales set to 0.5 (settings put global window_animation_scale / transition_animation_scale / animator_duration_scale).
