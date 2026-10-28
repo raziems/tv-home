@@ -49,6 +49,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -587,22 +588,26 @@ public class MainActivity extends Activity {
         List<TextView> rows = new ArrayList<>();
 
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
-        List<TvInputInfo> inputs = new ArrayList<>();
+        // Ports with a cable report CONNECTED; an empty HDMI port reports CONNECTED_STANDBY (that is what
+        // the hotplug line maps to). Empty ports are listed last and dimmed, like Sony's own source menu.
+        List<TvInputInfo> live = new ArrayList<>(), dead = new ArrayList<>();
         if (tim != null) for (TvInputInfo t : tim.getTvInputList()) {
-            if (t.isPassthroughInput() && !t.isHidden(this)) inputs.add(t);
+            if (!t.isPassthroughInput() || t.isHidden(this)) continue;
+            int state = TvInputManager.INPUT_STATE_CONNECTED;
+            try { state = tim.getInputState(t.getId()); } catch (IllegalArgumentException ignored) { }
+            (state == TvInputManager.INPUT_STATE_CONNECTED ? live : dead).add(t);
         }
-        Collections.sort(inputs, (x, y) -> inputLabel(x).compareToIgnoreCase(inputLabel(y)));
-        for (TvInputInfo t : inputs) {
-            rows.add(inputRow(inputLabel(t), () -> {
-                Intent i = new Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(t.getId()));
-                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                if (!launch(i)) openPackage(inputPickerPkg);
-            }));
-        }
-        if (isInstalled(liveTvPkg)) rows.add(inputRow("Live TV", () -> openPackage(liveTvPkg)));
-        if (inputs.isEmpty() && isInstalled(inputPickerPkg)) rows.add(inputRow("All sources…", () -> openPackage(inputPickerPkg)));
+        Comparator<TvInputInfo> byLabel = (x, y) -> inputLabel(x).compareToIgnoreCase(inputLabel(y));
+        Collections.sort(live, byLabel);
+        Collections.sort(dead, byLabel);
+        for (TvInputInfo t : live) rows.add(inputRow(inputLabel(t), false, () -> switchToInput(t)));
+        if (isInstalled(liveTvPkg)) rows.add(inputRow("Live TV", false, () -> openPackage(liveTvPkg)));
+        for (TvInputInfo t : dead) rows.add(inputRow(inputLabel(t), true, () -> switchToInput(t)));
+        List<TvInputInfo> inputs = new ArrayList<>(live);
+        inputs.addAll(dead);
+        if (inputs.isEmpty() && isInstalled(inputPickerPkg)) rows.add(inputRow("All sources…", false, () -> openPackage(inputPickerPkg)));
 
-        if (rows.isEmpty()) rows.add(inputRow("Settings", () -> launch(new Intent(Settings.ACTION_SETTINGS))));
+        if (rows.isEmpty()) rows.add(inputRow("Settings", false, () -> launch(new Intent(Settings.ACTION_SETTINGS))));
         for (TextView r : rows) {
             r.setOnClickListener(v -> { pw.dismiss(); ((Runnable) v.getTag()).run(); });
             list.addView(r, new LinearLayout.LayoutParams(-1, dp(36)));
@@ -628,8 +633,16 @@ public class MainActivity extends Activity {
         return String.valueOf(c);
     }
 
-    private TextView inputRow(String label, Runnable action) {
-        TextView r = text(13, "sans-serif", Color.WHITE);
+    private void switchToInput(TvInputInfo t) {
+        Intent i = new Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(t.getId()));
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (!launch(i)) openPackage(inputPickerPkg);
+    }
+
+    /** One row of the Inputs menu; a dimmed row is a port with nothing plugged in (still selectable). */
+    private TextView inputRow(String label, boolean dim, Runnable action) {
+        int idle = dim ? 0x73FFFFFF : Color.WHITE, focused = dim ? 0x80111111 : 0xFF111111;
+        TextView r = text(13, "sans-serif", idle);
         r.setText(label);
         r.setTag(action);
         r.setId(View.generateViewId());
@@ -642,7 +655,7 @@ public class MainActivity extends Activity {
         r.setBackground(bg);
         r.setOnFocusChangeListener((v, has) -> {
             bg.setColor(has ? 0xF2FFFFFF : Color.TRANSPARENT);
-            r.setTextColor(has ? 0xFF111111 : Color.WHITE);
+            r.setTextColor(has ? focused : idle);
         });
         return r;
     }
@@ -654,7 +667,7 @@ public class MainActivity extends Activity {
         int h = now.get(Calendar.HOUR_OF_DAY);
         greeting.setText(h < 5 ? "GOOD NIGHT" : h < 12 ? "GOOD MORNING" : h < 17 ? "GOOD AFTERNOON" : "GOOD EVENING");
         boolean is24 = android.text.format.DateFormat.is24HourFormat(this);
-        clock.setText(new SimpleDateFormat(is24 ? "H:mm" : "h:mm", Locale.getDefault()).format(now.getTime()));
+        clock.setText(new SimpleDateFormat(is24 ? "HH:mm" : "h:mm", Locale.getDefault()).format(now.getTime()));
         ampm.setText(is24 ? "" : (h < 12 ? "AM" : "PM"));
         date.setText(new SimpleDateFormat("EEEE  d MMMM", Locale.getDefault()).format(now.getTime()).toUpperCase(Locale.getDefault()));
     }
