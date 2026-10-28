@@ -22,6 +22,8 @@ import android.graphics.drawable.GradientDrawable;
 import android.media.tv.TvContract;
 import android.media.tv.TvInputInfo;
 import android.media.tv.TvInputManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
@@ -140,6 +142,7 @@ public class MainActivity extends Activity {
         tf.addAction(Intent.ACTION_TIME_CHANGED);
         tf.addAction(Intent.ACTION_TIMEZONE_CHANGED);
         tf.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+        tf.addAction(ConnectivityManager.CONNECTIVITY_ACTION); // Ethernet plugged or unplugged
         registerReceiver(tick, tf);
         updateClock();
         updateWifi();
@@ -301,11 +304,11 @@ public class MainActivity extends Activity {
         LinearLayout right = new LinearLayout(this);
         right.setGravity(Gravity.CENTER_VERTICAL);
         right.setClipChildren(false);
-        TextView inputs = pill("Inputs", "⇥");
+        TextView inputs = pill("Inputs", R.drawable.ic_inputs);
         inputs.setOnClickListener(v -> showInputs(v));
-        wifiPill = pill("Wi-Fi", "◉");
+        wifiPill = pill("Wi-Fi", R.drawable.ic_wifi);
         wifiPill.setOnClickListener(v -> launch(new Intent(Settings.ACTION_WIFI_SETTINGS)));
-        TextView settings = pill("Settings", "⚙");
+        TextView settings = pill("Settings", R.drawable.ic_settings);
         settings.setOnClickListener(v -> launch(new Intent(Settings.ACTION_SETTINGS)));
         for (TextView p : new TextView[]{inputs, wifiPill, settings}) {
             right.addView(p, llp(-2, dp(30), dp(10), 0, 0, 0));
@@ -315,11 +318,13 @@ public class MainActivity extends Activity {
         return header;
     }
 
-    private TextView pill(String label, String glyph) {
+    private TextView pill(String label, int icon) {
         TextView p = text(11, "sans-serif-medium", 0xE6FFFFFF);
-        p.setText(glyph + "  " + label);
+        p.setText(label);
         p.setGravity(Gravity.CENTER);
-        p.setPadding(dp(14), 0, dp(14), 0);
+        p.setPadding(dp(11), 0, dp(14), 0);
+        p.setCompoundDrawablePadding(dp(6));
+        setPillIcon(p, icon);
         p.setFocusable(true);
         p.setId(View.generateViewId());
         GradientDrawable bg = new GradientDrawable();
@@ -330,11 +335,25 @@ public class MainActivity extends Activity {
         p.setOnFocusChangeListener((v, has) -> {
             bg.setColor(has ? 0xF2FFFFFF : 0x66000000);
             ((TextView) v).setTextColor(has ? 0xFF111111 : 0xE6FFFFFF);
+            tintPillIcon((TextView) v, has ? 0xFF111111 : 0xE6FFFFFF);
             v.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f)
                     .setInterpolator(new OvershootInterpolator(2f)).setDuration(220).start();
             if (has) { lastFocusedId = v.getId(); scroll.smoothScrollTo(0, 0); fadeGlow(1f); }
         });
         return p;
+    }
+
+    /** Vector icon at the start of a pill, tinted like its text. */
+    private void setPillIcon(TextView p, int icon) {
+        Drawable d = getDrawable(icon).mutate();
+        d.setBounds(0, 0, dp(13), dp(13));
+        d.setTint(p.getCurrentTextColor());
+        p.setCompoundDrawablesRelative(d, null, null, null);
+    }
+
+    private void tintPillIcon(TextView p, int color) {
+        Drawable d = p.getCompoundDrawablesRelative()[0];
+        if (d != null) d.setTint(color);
     }
 
     // ---------------------------------------------------------------- apps
@@ -621,17 +640,28 @@ public class MainActivity extends Activity {
         date.setText(new SimpleDateFormat("EEEE  d MMMM", Locale.getDefault()).format(now.getTime()).toUpperCase(Locale.getDefault()));
     }
 
+    /** Network pill: Ethernet, the Wi-Fi network's name, or Offline, with a matching icon. */
     private void updateWifi() {
-        String name = "Wi-Fi";
+        int icon = R.drawable.ic_offline;
+        String name = "Offline";
         try {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-            if (wm != null && wm.getConnectionInfo() != null) {
-                String s = wm.getConnectionInfo().getSSID();
-                if (s != null && !s.contains("unknown ssid")) name = s.replace("\"", "");
-                if (wm.getConnectionInfo().getNetworkId() == -1) name = "Offline";
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            NetworkCapabilities caps = cm == null ? null : cm.getNetworkCapabilities(cm.getActiveNetwork());
+            if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
+                icon = R.drawable.ic_ethernet;
+                name = "Ethernet";
+            } else if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                icon = R.drawable.ic_wifi;
+                name = "Wi-Fi";
+                WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+                if (wm != null && wm.getConnectionInfo() != null) {
+                    String s = wm.getConnectionInfo().getSSID();
+                    if (s != null && !s.contains("unknown ssid")) name = s.replace("\"", "");
+                }
             }
         } catch (SecurityException ignored) { }
-        wifiPill.setText("◉  " + name);
+        wifiPill.setText(name);
+        setPillIcon(wifiPill, icon);
     }
 
     // ---------------------------------------------------------------- glow
