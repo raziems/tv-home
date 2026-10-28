@@ -524,6 +524,14 @@ public class MainActivity extends Activity {
             c.setNextFocusLeftId(i == 0 ? c.getId() : dockCards.get(i - 1).getId());
             c.setNextFocusRightId(i == d - 1 ? c.getId() : dockCards.get(i + 1).getId());
             c.setNextFocusDownId(g > 0 ? gridCards.get(Math.min(i, g - 1)).getId() : c.getId());
+            // Pressing past either end of the dock: nudge toward the wall and spring back, like tvOS.
+            final boolean first = i == 0, last = i == d - 1;
+            c.setOnKeyListener((v, code, e) -> {
+                if (e.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (code == KeyEvent.KEYCODE_DPAD_LEFT && first) { if (e.getRepeatCount() == 0) bounceDock(v, -1); return true; }
+                if (code == KeyEvent.KEYCODE_DPAD_RIGHT && last) { if (e.getRepeatCount() == 0) bounceDock(v, 1); return true; }
+                return false;
+            });
         }
         int lastRow = (g - 1) / cols;
         for (int j = 0; j < g; j++) {
@@ -537,6 +545,17 @@ public class MainActivity extends Activity {
             c.setNextFocusLeftId(col == 0 ? c.getId() : gridCards.get(j - 1).getId());
             c.setNextFocusRightId(col == cols - 1 || j == g - 1 ? c.getId() : gridCards.get(j + 1).getId());
         }
+    }
+
+    /** End-of-row bounce: the focused tile moves 9dp toward the wall and the row 3dp, then both spring back. */
+    private void bounceDock(View card, int dir) {
+        OvershootInterpolator back = new OvershootInterpolator(3f);
+        card.animate().translationX(dir * dp(9)).setDuration(90).setInterpolator(new DecelerateInterpolator())
+                .withEndAction(() -> card.animate().translationX(0).setDuration(320).setInterpolator(back).start())
+                .start();
+        dockRow.animate().translationX(dir * dp(3)).setDuration(90).setInterpolator(new DecelerateInterpolator())
+                .withEndAction(() -> dockRow.animate().translationX(0).setDuration(320).setInterpolator(back).start())
+                .start();
     }
 
     private void scrollToRow(View tileBox) {
