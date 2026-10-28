@@ -9,10 +9,9 @@
     <string-array name="dock_apps">
         <item>com.netflix.ninja</item>
         <item>com.google.android.youtube.tv</item>
-        <item>com.amazon.amazonvideo.livingroom</item>
+        <item>com.tm.unifitv.tv</item>
         <item>com.wbd.stream</item>
         <item>com.spotify.tv.android</item>
-        <item>com.tm.unifitv.tv</item>
     </string-array>
 
     <!-- Never shown as tiles: system helpers, and the Live TV app (it's in the Inputs menu). -->
