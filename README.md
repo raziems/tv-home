@@ -44,6 +44,80 @@ launcher/build-and-install.sh                               # build + install th
 
 Undo everything with `tools/restore.sh <the same list>`.
 
+## Do it by hand (Windows) — and setting up another TV
+
+The same launcher works on any Android TV / Google TV. What changes from one TV to the next is
+five things: the TV's IP, the stock launcher to disable, the dock apps, the Live TV app, and the
+debloat list. The Windows scripts find the first two for you; the rest you read off the TV with
+`tools/probe-windows.sh` and write into two files. Run everything from Git Bash in this folder.
+
+### 1. One-time tools on the PC
+
+```bash
+winget install Google.PlatformTools        # adb
+winget install Microsoft.OpenJDK.17        # javac, jar, keytool
+```
+
+You also need the Android SDK build-tools and a platform (Android Studio installs them, or
+`sdkmanager "build-tools;36.0.0" "platforms;android-35"`). The build script looks in
+`C:\Program Files (x86)\Android\android-sdk`; point it elsewhere with `ANDROID_HOME`, and pick
+other versions with `BUILD_TOOLS=35.0.0 PLATFORM=android-34`.
+
+### 2. On the TV
+
+Settings → Device Preferences (or System) → About → press OK on **Build** 7 times → back →
+Developer options → **USB debugging** on. Some brands also have **Network debugging**; turn it on
+too. Keep the TV on, on the same Wi-Fi as the PC.
+
+### 3. Find and read the TV
+
+```bash
+tools/find-tv-windows.sh                   # scans the Wi-Fi, saves the IP to tools/.tv_host
+tools/probe-windows.sh                     # everything you need for the next step
+```
+
+Accept "Allow USB debugging?" on the TV when it appears. The probe prints:
+
+| Section | What to do with it |
+|---|---|
+| Home handlers | The Google entry is the stock launcher: `com.google.android.tvlauncher` on Android TV sets (Sony, Xiaomi, Nvidia), `com.google.android.apps.tv.launcherx` on Google TV sets (TCL, Hisense, Chromecast). Ignore `FallbackHome` entries. The build script picks the right one itself; set `STOCK_LAUNCHER=` only to override. |
+| Apps that show on a TV launcher | Copy package names into `dock_apps` (the dock, left to right) and `hidden_apps` (never shown) in `launcher/res/values/config.xml`. |
+| Live TV candidates | Put the tuner app in `live_tv_package`. Common: `com.android.tv` (Google Live Channels, Sony), `com.tcl.tv` (TCL), `com.mediatek.wwtv.tvcenter` (Xiaomi and other MediaTek sets), `com.sony.dtv.tvx` (older Sony). Also add it to `hidden_apps`, since the Inputs menu lists it. |
+| TV inputs | Just a check: these are the HDMI/AV rows the Inputs menu will show. |
+| All system packages | Write your debloat list as `examples/<brand-model>/debloat.txt`, one package per line, `#` comments. Copy the closest existing example and edit. Never list the launcher's dependencies: `com.android.tv.settings`, `com.google.android.gms`, `com.android.vending`, the Live TV app, or anything with `inputmethod`, `tvinput`, `providers.tv`, `hdmi` or `cec` in the name. |
+
+### 4. Debloat, build, install
+
+```bash
+tools/disable-windows.sh examples/<brand-model>/debloat.txt    # reversible: disables, never uninstalls
+bash launcher/build-windows.sh                                # build, snapshot, install, set as Home
+```
+
+The build script saves the TV's Home app and enabled-package list to `launcher/build/backup-*.txt`
+before changing anything. On **Google TV** sets, also pass `DISABLE_SETUPWRAITH=1`, or the setup app
+hijacks the Home button (see Gotchas). Then press Home from inside an app, such as Netflix, to confirm
+it returns to the new launcher.
+
+### 5. Undo
+
+```bash
+tools/restore-windows.sh examples/<brand-model>/debloat.txt    # stock launcher back, list re-enabled
+UNINSTALL=1 tools/restore-windows.sh                           # ...and remove the launcher
+```
+
+### Windows-only gotchas
+
+- **aapt2 writes asset paths with backslashes** (`assets/wallpapers\01.jpg`), which Android's asset
+  listing cannot see, so no wallpaper shows. `build-windows.sh` adds the assets with the JDK's `jar`
+  instead of passing them to aapt2.
+- **javac defaults to the Windows code page**, which garbles any non-ASCII text in the source. The
+  script passes `-encoding UTF-8`.
+- **Keep `launcher/debug.keystore`** (git-ignored). Updates over an installed launcher must be signed
+  with the same key; lose it and the TV refuses the update until you uninstall first, which needs ADB
+  to set Home again.
+- **Git Bash rewrites `/sdcard/...` arguments** into Windows paths. When calling adb by hand, prefix
+  the command with `MSYS_NO_PATHCONV=1`.
+
 ## What's here
 
 | Path | What it is |
@@ -55,6 +129,9 @@ Undo everything with `tools/restore.sh <the same list>`.
 | [tools/find-tv.sh](tools/find-tv.sh) | Finds Android TVs on your Wi-Fi |
 | [tools/type.sh](tools/type.sh) | Type into the TV's on-screen keyboard from your laptop (`tools/type.sh` alone prompts hidden, for passwords) |
 | [tools/disable.sh](tools/disable.sh), [tools/restore.sh](tools/restore.sh) | Apply / undo a debloat list |
+| [launcher/build-windows.sh](launcher/build-windows.sh) | Windows build + install (Git Bash, real adb, no Python) |
+| [tools/find-tv-windows.sh](tools/find-tv-windows.sh), [tools/probe-windows.sh](tools/probe-windows.sh) | Windows: find the TV; print apps, Home handlers, inputs and packages for config.xml |
+| [tools/disable-windows.sh](tools/disable-windows.sh), [tools/restore-windows.sh](tools/restore-windows.sh) | Windows: apply / undo a debloat list and put the stock launcher back |
 | [examples/](examples/) | Debloat lists per TV model |
 
 ## The launcher
@@ -90,7 +167,8 @@ Change the dock: edit `config.xml`, then run `launcher/build-and-install.sh`.
 
 Android TV and Google TV: TCL, Xiaomi/Redmi, Hisense, Sony, OnePlus, Realme, Nvidia Shield,
 Chromecast with Google TV and most others. Not Samsung (Tizen), LG (webOS) or Fire TV.
-Tested on: TCL Google TV (Android 11). Add yours to `examples/`.
+Tested on: TCL Google TV (Android 11, macOS build), Sony BRAVIA VU2 (Android TV 11, Realtek,
+Windows build — see `examples/sony-bravia-vu2/`). Add yours to `examples/`.
 
 ## Credits
 

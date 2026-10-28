@@ -7,11 +7,17 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 ADB="${ADB:-$LOCALAPPDATA/Microsoft/WinGet/Packages/Google.PlatformTools_Microsoft.Winget.Source_8wekyb3d8bbwe/platform-tools/adb.exe}"
-TV="${TV_HOST:-192.168.100.19}:${TV_PORT:-5555}"
-STOCK_LAUNCHER="${STOCK_LAUNCHER:-com.google.android.tvlauncher}"
+HOST="${TV_HOST:-$(cat tools/.tv_host 2>/dev/null || true)}"
+[ -n "$HOST" ] || { echo "Don't know the TV's IP: run tools/find-tv-windows.sh or set TV_HOST=192.168.x.y"; exit 1; }
+TV="$HOST:${TV_PORT:-5555}"
 "$ADB" connect "$TV" >/dev/null
 sh() { echo "\$ $*"; "$ADB" -s "$TV" shell "$@"; }
 
+# Stock launcher: whichever of the two Google launchers is installed (disabled or not).
+if [ -z "${STOCK_LAUNCHER:-}" ]; then
+  if "$ADB" -s "$TV" shell pm list packages -u | grep -q 'com.google.android.apps.tv.launcherx'; then STOCK_LAUNCHER=com.google.android.apps.tv.launcherx
+  else STOCK_LAUNCHER=com.google.android.tvlauncher; fi
+fi
 sh pm enable "$STOCK_LAUNCHER"
 sh pm enable com.google.android.tungsten.setupwraith
 sh cmd package set-home-activity --user 0 "$STOCK_LAUNCHER/.MainActivity"

@@ -13,9 +13,14 @@ SDK="${ANDROID_HOME:-/c/Program Files (x86)/Android/android-sdk}"
 BT="$SDK/build-tools/${BUILD_TOOLS:-36.0.0}"
 JAR="$SDK/platforms/${PLATFORM:-android-35}/android.jar"
 ADB="${ADB:-$LOCALAPPDATA/Microsoft/WinGet/Packages/Google.PlatformTools_Microsoft.Winget.Source_8wekyb3d8bbwe/platform-tools/adb.exe}"
-TV="${TV_HOST:-192.168.100.19}:${TV_PORT:-5555}"
-# Sony / older Android TV: com.google.android.tvlauncher. Google TV sets: com.google.android.apps.tv.launcherx
-STOCK_LAUNCHER="${STOCK_LAUNCHER:-com.google.android.tvlauncher}"
+# TV address: TV_HOST env, else tools/.tv_host (written by tools/find-tv-windows.sh, git-ignored).
+HOST="${TV_HOST:-$(cat ../tools/.tv_host 2>/dev/null || true)}"
+[ -n "$HOST" ] || [ "${1:-}" = "--build" ] || { echo "Don't know the TV's IP: run tools/find-tv-windows.sh or set TV_HOST=192.168.x.y"; exit 1; }
+TV="$HOST:${TV_PORT:-5555}"
+# Stock launcher to disable. Android TV (Sony, Xiaomi, Nvidia): com.google.android.tvlauncher.
+# Google TV (TCL, Hisense, Chromecast with Google TV): com.google.android.apps.tv.launcherx.
+# Leave unset to detect from the TV's current Home handler.
+STOCK_LAUNCHER="${STOCK_LAUNCHER:-}"
 export PATH="$JAVA_HOME/bin:$PATH"
 B=build
 W() { cygpath -w "$1"; }   # the .bat/.exe tools want Windows paths
@@ -42,8 +47,15 @@ echo "built $B/tvhome.apk ($(wc -c < "$B/tvhome.apk") bytes)"
 
 "$ADB" connect "$TV" >/dev/null
 sh() { echo "\$ $*"; "$ADB" -s "$TV" shell "$@"; }   # one pm call per shell: chained pm calls can stop early
+home_now=$("$ADB" -s "$TV" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -1 | tr -d '\r')
+if [ -z "$STOCK_LAUNCHER" ]; then
+  # Whichever Google launcher the TV ships (listed even when already disabled).
+  if "$ADB" -s "$TV" shell pm list packages -u | grep -q 'com.google.android.apps.tv.launcherx'; then STOCK_LAUNCHER=com.google.android.apps.tv.launcherx
+  else STOCK_LAUNCHER=com.google.android.tvlauncher; fi
+fi
+echo "TV $TV · current Home: $home_now · stock launcher to disable: $STOCK_LAUNCHER"
 snap="$B/backup-$(date +%Y%m%d-%H%M%S).txt"
-{ echo "# home before install:"; "$ADB" -s "$TV" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -1
+{ echo "# home before install:"; echo "$home_now"
   echo "# enabled packages before install:"; "$ADB" -s "$TV" shell pm list packages -e; } > "$snap"
 echo "saved $snap"
 "$ADB" -s "$TV" install -r "$B/tvhome.apk"
