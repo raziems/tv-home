@@ -77,6 +77,7 @@ public class MainActivity extends Activity {
         boolean isBanner;
         int color;
         boolean light;   // mostly bright banner: the focus sweep becomes a shadow band
+        View.OnClickListener action;   // set: the tile runs this instead of opening an app (Hidden apps)
     }
 
     private final Map<String, Integer> colorCache = new HashMap<>();
@@ -105,7 +106,9 @@ public class MainActivity extends Activity {
     private boolean warmed;
     private boolean firstShow = true;
     private int packageSeq;
-    private PopupWindow inputsPopup;
+    private PopupWindow inputsPopup, tileMenu;
+    private final Set<String> userHidden = new HashSet<>();   // hidden from the remote; kept in preferences
+    private final List<App> hiddenApps = new ArrayList<>();
 
     private final BroadcastReceiver tick = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) { updateClock(); updateWifi(); }
@@ -125,6 +128,7 @@ public class MainActivity extends Activity {
         liveTvPkg = getString(R.string.live_tv_package);
         inputPickerPkg = getString(R.string.input_picker_package);
         cols = getResources().getInteger(R.integer.columns);
+        userHidden.addAll(getSharedPreferences("launcher", MODE_PRIVATE).getStringSet("hidden", new HashSet<>()));
         for (String s : getResources().getStringArray(R.array.app_colors)) {   // "package=#RRGGBB"
             int eq = s.indexOf('=');
             if (eq <= 0) continue;
@@ -185,6 +189,7 @@ public class MainActivity extends Activity {
         handler.removeCallbacks(rotateWallpaper);
         unregisterReceiver(tick);
         if (inputsPopup != null) inputsPopup.dismiss();
+        if (tileMenu != null) tileMenu.dismiss();
     }
 
     @Override
@@ -389,6 +394,7 @@ public class MainActivity extends Activity {
         if (changed != null) packageSeq = changed.getSequenceNumber();
         Intent q = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);
         Map<String, App> byPkg = new HashMap<>();
+        hiddenApps.clear();   // refilled by the loop below; the Hidden apps tile's menu reads it later
         for (ResolveInfo ri : pm.queryIntentActivities(q, 0)) {
             ActivityInfo ai = ri.activityInfo;
             if (hidden.contains(ai.packageName) || byPkg.containsKey(ai.packageName)) continue;
@@ -403,6 +409,7 @@ public class MainActivity extends Activity {
             Integer forced = colorOverrides.get(a.pkg);
             a.color = forced != null ? forced : sampleColor(a.pkg, a.art);
             a.light = isLight(a.art);
+            if (userHidden.contains(a.pkg)) { hiddenApps.add(a); continue; }
             byPkg.put(a.pkg, a);
         }
 
@@ -410,6 +417,17 @@ public class MainActivity extends Activity {
         for (String p : dockApps) if (byPkg.containsKey(p)) dock.add(byPkg.remove(p));
         List<App> rest = new ArrayList<>(byPkg.values());
         Collections.sort(rest, (x, y) -> x.label.compareToIgnoreCase(y.label));
+        Collections.sort(hiddenApps, (x, y) -> x.label.compareToIgnoreCase(y.label));
+        if (!hiddenApps.isEmpty()) {
+            // Last tile of the grid: the way back for apps hidden from the long-press menu.
+            App h = new App();
+            h.pkg = getPackageName() + ".hidden";
+            h.label = "Hidden apps (" + hiddenApps.size() + ")";
+            h.art = getDrawable(R.drawable.ic_hidden);
+            h.color = 0xFF5A5A66;
+            h.action = this::showHiddenMenu;
+            rest.add(h);
+        }
 
         dockRow.removeAllViews();
         grid.removeAllViews();
@@ -518,10 +536,8 @@ public class MainActivity extends Activity {
         label.setAlpha(0f);
         if (!inDock) box.addView(label, llp(-1, -2, 0, dp(10), 0, 0));
 
-        card.setOnClickListener(v -> launch(new Intent(Intent.ACTION_MAIN)
-                .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
-                .setComponent(app.component)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)));
+        card.setOnClickListener(v -> { if (app.action != null) app.action.onClick(v); else openApp(app); });
+        if (app.action == null) card.setOnLongClickListener(v -> { showTileMenu(v, app); return true; });
         card.setOnFocusChangeListener((v, has) -> {
             float s = has ? (inDock ? 1.12f : 1.1f) : 1f;
             v.animate().scaleX(s).scaleY(s).translationZ(has ? dp(14) : 0)
@@ -616,6 +632,96 @@ public class MainActivity extends Activity {
     }
 
     // ---------------------------------------------------------------- inputs
+
+    private void openApp(App app) {
+        launch(new Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
+                .setComponent(app.component)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
+    }
+
+    // ---------------------------------------------------------------- long-press menu
+
+    /** Hold OK on a tile: Open, App info, Hide. */
+    private void showTileMenu(View card, App app) {
+        List<TextView> rows = new ArrayList<>();
+        rows.add(inputRow("Open", false, () -> openApp(app)));
+        rows.add(inputRow("App info", false, () -> launch(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:" + app.pkg)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))));
+        rows.add(inputRow("Hide", false, () -> {
+            int gi = gridCards.indexOf(card);
+            userHidden.add(app.pkg);
+            saveHidden();
+            buildApps();
+            refocusGrid(gi);
+        }));
+        showMenu(card, rows);
+    }
+
+    /** The Hidden apps tile: pick one to bring it back. */
+    private void showHiddenMenu(View card) {
+        List<TextView> rows = new ArrayList<>();
+        for (App a : hiddenApps) {
+            rows.add(inputRow(a.label, false, () -> {
+                userHidden.remove(a.pkg);
+                saveHidden();
+                buildApps();
+                refocusGrid(gridCards.size() - 1);
+            }));
+        }
+        showMenu(card, rows);
+    }
+
+    /** After the grid is rebuilt, stay in it (buildApps would otherwise fall back to the dock). */
+    private void refocusGrid(int index) {
+        if (index < 0 || gridCards.isEmpty()) return;
+        View c = gridCards.get(Math.min(index, gridCards.size() - 1));
+        c.requestFocus();
+    }
+
+    private void saveHidden() {
+        getSharedPreferences("launcher", MODE_PRIVATE).edit().putStringSet("hidden", new HashSet<>(userHidden)).apply();
+    }
+
+    /** A small focusable menu over a tile: above it when the tile sits in the lower half of the screen. */
+    private void showMenu(View anchor, List<TextView> rows) {
+        if (rows.isEmpty()) return;
+        if (tileMenu != null) tileMenu.dismiss();
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(8), dp(8), dp(8), dp(8));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(16));
+        bg.setColor(0xF02A2A2E);
+        bg.setStroke(dp(1), 0x26FFFFFF);
+        list.setBackground(bg);
+        PopupWindow pw = new PopupWindow(list, dp(200), -2, true);
+        for (TextView r : rows) {
+            r.setOnClickListener(v -> { pw.dismiss(); ((Runnable) v.getTag()).run(); });
+            list.addView(r, new LinearLayout.LayoutParams(-1, dp(36)));
+        }
+        for (int i = 0; i < rows.size(); i++) {
+            TextView r = rows.get(i);
+            r.setNextFocusUpId(rows.get(Math.max(0, i - 1)).getId());
+            r.setNextFocusDownId(rows.get(Math.min(rows.size() - 1, i + 1)).getId());
+            r.setNextFocusLeftId(r.getId());
+            r.setNextFocusRightId(r.getId());
+        }
+        pw.setOutsideTouchable(true);
+        pw.setElevation(dp(16));
+        pw.setOnDismissListener(() -> { tileMenu = null; anchor.requestFocus(); });
+        tileMenu = pw;
+        int[] at = new int[2];
+        anchor.getLocationOnScreen(at);
+        list.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        int w = dp(200), h = list.getMeasuredHeight();
+        int x = at[0] + (int) (anchor.getWidth() * anchor.getScaleX()) / 2 - w / 2;
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        boolean above = at[1] + anchor.getHeight() / 2 > screenH / 2;
+        int y = above ? at[1] - h - dp(14) : at[1] + anchor.getHeight() + dp(14);
+        pw.showAtLocation(anchor, Gravity.NO_GRAVITY, Math.max(dp(8), x), Math.max(dp(8), y));
+        rows.get(0).requestFocus();
+    }
 
     private void showInputs(View anchor) {
         LinearLayout list = new LinearLayout(this);
