@@ -44,5 +44,18 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- Screensaver: the same wallpapers with a clock. Selected with
+             settings put secure screensaver_components com.mihir.tvhome/.WallpaperDream -->
+        <service
+            android:name=".WallpaperDream"
+            android:label="Wallpapers"
+            android:exported="true"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

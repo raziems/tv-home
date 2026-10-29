@@ -21,6 +21,7 @@ fi
 sh pm enable "$STOCK_LAUNCHER"
 sh pm enable com.google.android.tungsten.setupwraith
 sh cmd package set-home-activity --user 0 "$STOCK_LAUNCHER/.MainActivity"
+sh settings delete secure screensaver_components   # back to the TV's default screensaver
 sh am force-stop com.mihir.tvhome
 if [ "${UNINSTALL:-0}" = "1" ]; then sh pm uninstall com.mihir.tvhome; fi
 if [ -n "${1:-}" ]; then

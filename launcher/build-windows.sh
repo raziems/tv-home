@@ -57,6 +57,7 @@ fi
 echo "TV $TV · current Home: $home_now · stock launcher to disable: $STOCK_LAUNCHER"
 snap="$B/backup-$(date +%Y%m%d-%H%M%S).txt"
 { echo "# home before install:"; echo "$home_now"
+  echo "# screensaver before install:"; "$ADB" -s "$TV" shell settings get secure screensaver_components
   echo "# enabled packages before install:"; "$ADB" -s "$TV" shell pm list packages -e; } > "$snap"
 echo "saved $snap"
 "$ADB" -s "$TV" install -r "$B/tvhome.apk"
@@ -65,6 +66,9 @@ sh cmd package set-home-activity --user 0 com.mihir.tvhome/.MainActivity
 sh pm disable-user --user 0 "$STOCK_LAUNCHER"
 if [ "${DISABLE_SETUPWRAITH:-0}" = "1" ]; then sh pm disable-user --user 0 com.google.android.tungsten.setupwraith; fi
 sh cmd package set-home-activity --user 0 com.mihir.tvhome/.MainActivity
+# The launcher's wallpaper screensaver (the TV's own is usually disabled by the debloat list).
+sh settings put secure screensaver_components com.mihir.tvhome/.WallpaperDream
+sh settings put secure screensaver_enabled 1
 sh am force-stop com.android.tv.settings
 sh am force-stop com.mihir.tvhome
 sh input keyevent KEYCODE_HOME
