@@ -145,7 +145,9 @@ UNINSTALL=1 tools/restore-windows.sh                           # ...and remove t
 - **Hold OK on a tile** for a menu: Open, App info, Add to dock / Move left / Move right / Remove
   from dock, and Hide. The dock order and hidden apps are kept in the launcher's preferences, so
   `config.xml` is only the starting point; a "Hidden apps" tile at the end of the grid brings hidden
-  apps back. To return to `config.xml`'s dock, clear the launcher's data from App info.
+  apps back. To return to `config.xml`'s dock, clear the launcher's data from App info; that also
+  drops its location grant (the Wi-Fi pill shows "Wi-Fi" instead of the network name) until you run
+  the install script again or `adb shell pm grant com.mihir.tvhome android.permission.ACCESS_FINE_LOCATION`.
 - A screensaver (Settings → Screen saver → "Wallpapers") shows the same photos with the clock.
 
 Change the dock: edit `config.xml`, then run `launcher/build-and-install.sh`.
