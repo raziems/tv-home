@@ -76,6 +76,7 @@ public class MainActivity extends Activity {
         Drawable art;
         boolean isBanner;
         int color;
+        boolean light;   // mostly bright banner: the focus sweep becomes a shadow band
     }
 
     private final Map<String, Integer> colorCache = new HashMap<>();
@@ -87,7 +88,12 @@ public class MainActivity extends Activity {
     private LinearLayout content, dockRow;
     private FrameLayout hero;
     private LinearLayout grid;
-    private View glow;
+    private View halo;                 // colour halo that slides under the focused dock tile
+    private FrameLayout dockWrap;      // the band behind the dock, tinted faintly with the app colour
+    private GradientDrawable band;
+    private final Map<String, Integer> colorOverrides = new HashMap<>();
+    private int lastDockIndex = -1;
+    static final int BAND_BASE = 0x61080612;
     private ImageView wallBack, wallFront;
     private View gridShade;
     private String[] wallpapers = new String[0];
@@ -122,6 +128,12 @@ public class MainActivity extends Activity {
         liveTvPkg = getString(R.string.live_tv_package);
         inputPickerPkg = getString(R.string.input_picker_package);
         cols = getResources().getInteger(R.integer.columns);
+        for (String s : getResources().getStringArray(R.array.app_colors)) {   // "package=#RRGGBB"
+            int eq = s.indexOf('=');
+            if (eq <= 0) continue;
+            try { colorOverrides.put(s.substring(0, eq).trim(), Color.parseColor(s.substring(eq + 1).trim())); }
+            catch (IllegalArgumentException ignored) { }
+        }
         setContentView(buildUi());
         // Fullscreen via the API 30 insets controller (the SYSTEM_UI_FLAG_* route is deprecated and
         // target 35+ draws edge-to-edge by default anyway). Must run after setContentView: the
@@ -223,10 +235,6 @@ public class MainActivity extends Activity {
             wallpapers = getAssets().list("wallpapers");
         } catch (java.io.IOException ignored) { }
 
-        glow = new View(this);
-        root.addView(glow, new FrameLayout.LayoutParams(-1, -1));
-        setGlow(glowColor);
-
         scroll = new HomeScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -254,23 +262,33 @@ public class MainActivity extends Activity {
         hero.addView(bottom, lp(-1, -2, Gravity.BOTTOM, dp(48), 0, dp(48), dp(30)));
 
         title = text(34, "sans-serif-light", Color.WHITE);
-        title.setShadowLayer(dp(18), 0, 0, 0x66000000);
+        title.setShadowLayer(dp(3), 0, dp(1), 0x73000000);
         title.setSingleLine(true);
+        title.setPivotX(0f);
         bottom.addView(title, new LinearLayout.LayoutParams(-2, -2));
         ((LinearLayout.LayoutParams) title.getLayoutParams()).setMargins(dp(8), 0, 0, dp(14));
 
+        // Dock: a dark band, the halo that follows focus, then the row of tiles on top.
+        dockWrap = new FrameLayout(this);
+        dockWrap.setClipChildren(false);
+        dockWrap.setClipToPadding(false);
+        band = new GradientDrawable();
+        band.setCornerRadius(dp(26));
+        band.setColor(BAND_BASE);
+        band.setStroke(dp(1), 0x1AFFFFFF);
+        dockWrap.setBackground(band);
+        halo = new View(this);
+        halo.setAlpha(0f);
+        dockWrap.addView(halo, new FrameLayout.LayoutParams(dp(10), dp(10)));
         dockRow = new LinearLayout(this);
         dockRow.setOrientation(LinearLayout.HORIZONTAL);
         dockRow.setGravity(Gravity.CENTER);
         dockRow.setClipChildren(false);
         dockRow.setClipToPadding(false);
         dockRow.setPadding(dp(20), dp(22), dp(20), dp(22));
-        GradientDrawable band = new GradientDrawable();
-        band.setCornerRadius(dp(26));
-        band.setColor(0x1FFFFFFF);
-        band.setStroke(dp(1), 0x14FFFFFF);
-        dockRow.setBackground(band);
-        bottom.addView(dockRow, new LinearLayout.LayoutParams(-1, -2));
+        dockWrap.addView(dockRow, new FrameLayout.LayoutParams(-1, -2));
+        bottom.addView(dockWrap, new LinearLayout.LayoutParams(-1, -2));
+        setGlow(glowColor);
 
         appsLabel = text(11, "sans-serif-medium", 0x99FFFFFF);
         appsLabel.setText("ALL APPS");
@@ -351,7 +369,7 @@ public class MainActivity extends Activity {
             tintPillIcon((TextView) v, has ? 0xFF111111 : 0xE6FFFFFF);
             v.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f)
                     .setInterpolator(new OvershootInterpolator(2f)).setDuration(220).start();
-            if (has) { lastFocusedId = v.getId(); scroll.smoothScrollTo(0, 0); fadeGlow(1f); }
+            if (has) { lastFocusedId = v.getId(); scroll.smoothScrollTo(0, 0); leaveDock(); fadeGlow(1f); }
         });
         return p;
     }
@@ -388,7 +406,9 @@ public class MainActivity extends Activity {
             if (banner == null) banner = ai.applicationInfo.loadBanner(pm);
             a.isBanner = banner != null;
             a.art = banner != null ? banner : ri.loadIcon(pm);
-            a.color = sampleColor(a.pkg, a.art);
+            Integer forced = colorOverrides.get(a.pkg);
+            a.color = forced != null ? forced : sampleColor(a.pkg, a.art);
+            a.light = isLight(a.art);
             byPkg.put(a.pkg, a);
         }
 
@@ -401,6 +421,7 @@ public class MainActivity extends Activity {
         grid.removeAllViews();
         dockCards.clear();
         gridCards.clear();
+        lastDockIndex = -1;
 
         for (int i = 0; i < dock.size(); i++) {
             View tile = tile(dock.get(i), true);
@@ -470,16 +491,21 @@ public class MainActivity extends Activity {
             img.setPadding(dp(22), dp(14), dp(22), dp(14));
         }
 
-        // Focus ring and sheen, drawn above the art.
-        GradientDrawable ring = new GradientDrawable();
-        ring.setCornerRadius(dp(10));
-        ring.setStroke(dp(2), 0xE6FFFFFF);
-        ring.setOrientation(GradientDrawable.Orientation.TL_BR);
-        ring.setColors(new int[]{0x26FFFFFF, 0x00FFFFFF, 0x00FFFFFF});
+        // Sheen on focus, and a band of light (shadow, on bright banners) that sweeps across once.
+        GradientDrawable sheen = new GradientDrawable();
+        sheen.setCornerRadius(dp(10));
+        sheen.setOrientation(GradientDrawable.Orientation.TL_BR);
+        sheen.setColors(new int[]{0x1FFFFFFF, 0x00FFFFFF, 0x00FFFFFF});
         View shine = new View(this);
-        shine.setBackground(ring);
+        shine.setBackground(sheen);
         shine.setAlpha(0f);
         card.addView(shine, new FrameLayout.LayoutParams(-1, -1));
+        int sweepColor = app.light ? 0x29000000 : 0x61FFFFFF;
+        View sweep = new View(this);
+        sweep.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{sweepColor & 0x00FFFFFF, sweepColor, sweepColor & 0x00FFFFFF}));
+        sweep.setAlpha(0f);
+        card.addView(sweep, new FrameLayout.LayoutParams(-1, -1));
 
         box.addView(card, new LinearLayout.LayoutParams(-1, -2));
 
@@ -490,13 +516,24 @@ public class MainActivity extends Activity {
         label.setAlpha(0f);
         if (!inDock) box.addView(label, llp(-1, -2, 0, dp(10), 0, 0));
 
-        card.setOnClickListener(v -> launch(new Intent(Intent.ACTION_MAIN)
-                .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
-                .setComponent(app.component)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)));
+        card.setOnClickListener(v -> {
+            Intent open = new Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
+                    .setComponent(app.component)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+            if (!inDock) { launch(open); return; }
+            // Press pulse: the tile and its halo flare for a beat, then the app opens.
+            v.animate().scaleX(1.18f).scaleY(1.18f).setDuration(110).setInterpolator(new DecelerateInterpolator()).start();
+            halo.animate().scaleX(1.15f).scaleY(1.15f).alpha(1f).setDuration(110).start();
+            handler.postDelayed(() -> {
+                launch(open);
+                v.animate().scaleX(1.12f).scaleY(1.12f).setDuration(200).setInterpolator(new OvershootInterpolator(1.5f)).start();
+                halo.animate().scaleX(1f).scaleY(1f).alpha(0.85f).setDuration(260).start();
+            }, 120);
+        });
         card.setOnFocusChangeListener((v, has) -> {
             float s = has ? (inDock ? 1.12f : 1.1f) : 1f;
-            v.animate().scaleX(s).scaleY(s).translationZ(has ? dp(14) : 0)
+            v.animate().scaleX(s).scaleY(s).translationZ(has ? dp(14) : 0).translationY(has && inDock ? -dp(5) : 0)
                     .setInterpolator(has ? new OvershootInterpolator(1.8f) : new DecelerateInterpolator())
                     .setDuration(has ? 320 : 200).start();
             shine.animate().alpha(has ? 1f : 0f).setDuration(160).start();
@@ -504,12 +541,15 @@ public class MainActivity extends Activity {
             if (!has) return;
             lastFocusedId = v.getId();
             if (inDock) {
-                title.setText(app.label);
-                title.animate().alpha(1f).setDuration(200).start();
-                animateGlow(app.color);
+                int idx = dockCards.indexOf(v);
+                int dir = lastDockIndex < 0 || idx == lastDockIndex ? 0 : (idx > lastDockIndex ? 1 : -1);
+                lastDockIndex = idx;
+                focusDock(v, idx, dir, app.color, app.label);
+                runSweep(sweep, v);
                 fadeGlow(1f);
                 scroll.smoothScrollTo(0, 0);
             } else {
+                leaveDock();
                 fadeGlow(0.35f);
                 title.animate().alpha(0f).setDuration(200).start();
                 scrollToRow(box);
@@ -722,30 +762,102 @@ public class MainActivity extends Activity {
         setPillIcon(wifiPill, icon);
     }
 
-    // ---------------------------------------------------------------- glow
+    // ---------------------------------------------------------------- halo
 
+    /** Halo colour, and the faint tint of the band behind the dock. */
     private void setGlow(int color) {
         glowColor = color;
         GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.OVAL);
         g.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        g.setGradientCenter(0.5f, 0.78f);
-        g.setGradientRadius(getResources().getDisplayMetrics().widthPixels * 0.62f);
-        g.setColors(new int[]{withAlpha(color, 0.5f), withAlpha(color, 0.14f), Color.TRANSPARENT});
-        glow.setBackground(g);
+        g.setGradientCenter(0.5f, 0.5f);
+        g.setGradientRadius(Math.max(dp(10), halo.getLayoutParams().width) * 0.5f);
+        g.setColors(new int[]{withAlpha(color, 0.8f), withAlpha(color, 0.3f), Color.TRANSPARENT});
+        halo.setBackground(g);
+        band.setColor(blend(BAND_BASE, color, 0.10f));
     }
 
     private void animateGlow(int to) {
         if (glowAnim != null) glowAnim.cancel();
         glowAnim = ValueAnimator.ofObject(new ArgbEvaluator(), glowColor, to);
-        glowAnim.setDuration(450);
+        glowAnim.setDuration(400);
         glowAnim.addUpdateListener(a -> setGlow((int) a.getAnimatedValue()));
         glowAnim.start();
     }
 
+    /** A dock tile took focus: halo under it, lean into the move, neighbours make room, the rest dim. */
+    private void focusDock(View card, int idx, int dir, int color, String name) {
+        animateGlow(color);
+        for (int i = 0; i < dockCards.size(); i++) {
+            View c = dockCards.get(i);
+            c.animate().alpha(i == idx ? 1f : 0.72f).translationX(i < idx ? -dp(7) : i > idx ? dp(7) : 0)
+                    .setDuration(300).setInterpolator(new DecelerateInterpolator()).start();
+        }
+        if (dir != 0) {
+            card.setCameraDistance(8000 * getResources().getDisplayMetrics().density);
+            card.animate().rotationY(dir * 6f).setDuration(180).withEndAction(() ->
+                    card.animate().rotationY(0f).setDuration(320).setInterpolator(new OvershootInterpolator(2f)).start()).start();
+        }
+        moveHalo(card);
+        // Title: the old name shrinks out, the new one grows in.
+        title.animate().alpha(0f).scaleX(0.94f).scaleY(0.94f).setDuration(110).withEndAction(() -> {
+            title.setText(name);
+            title.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(160).start();
+        }).start();
+    }
+
+    /** Focus left the dock for the pills or the grid: hide the halo and settle the tiles. */
+    private void leaveDock() {
+        halo.animate().alpha(0f).setDuration(200).start();
+        for (View c : dockCards) c.animate().alpha(1f).translationX(0).setDuration(240).start();
+        lastDockIndex = -1;
+    }
+
+    private void moveHalo(View card) {
+        if (card.getWidth() == 0) { card.post(() -> moveHalo(card)); return; }
+        int w = (int) (card.getWidth() * 1.5f), h = (int) (card.getHeight() * 1.5f);
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) halo.getLayoutParams();
+        if (lp.width != w || lp.height != h) { lp.width = w; lp.height = h; halo.setLayoutParams(lp); setGlow(glowColor); }
+        View box = (View) card.getParent();
+        float x = dockRow.getLeft() + box.getLeft() + card.getLeft() + card.getWidth() / 2f - w / 2f;
+        float y = dockRow.getTop() + box.getTop() + card.getTop() + card.getHeight() / 2f + dp(11) - h / 2f;
+        if (halo.getAlpha() == 0f) { halo.setTranslationX(x); halo.setTranslationY(y); }   // appear in place, don't fly in
+        halo.animate().translationX(x).translationY(y).alpha(0.85f)
+                .setDuration(300).setInterpolator(new OvershootInterpolator(1.3f)).start();
+    }
+
+    private void runSweep(View sweep, View card) {
+        if (card.getWidth() == 0) { card.post(() -> runSweep(sweep, card)); return; }
+        float w = card.getWidth();
+        sweep.animate().cancel();
+        sweep.setTranslationX(-w);
+        sweep.setAlpha(1f);
+        sweep.animate().translationX(w).setDuration(650).setInterpolator(new DecelerateInterpolator(1.2f))
+                .withEndAction(() -> sweep.setAlpha(0f)).start();
+    }
+
+    /** The grid sits over the photo's busiest middle part, so dim it while browsing apps. */
     private void fadeGlow(float alpha) {
-        glow.animate().alpha(alpha).setDuration(300).start();
-        // The grid sits over the photo's busiest middle part, so dim it while browsing apps.
         gridShade.animate().alpha(alpha < 1f ? 1f : 0f).setDuration(300).start();
+    }
+
+    /** Is the banner mostly bright? Then the focus sweep is a shadow band rather than a light one. */
+    private boolean isLight(Drawable d) {
+        try {
+            Bitmap bm = Bitmap.createBitmap(24, 14, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(bm);
+            d.setBounds(0, 0, 24, 14);
+            d.draw(c);
+            double lum = 0; int n = 0;
+            for (int y = 0; y < 14; y++) for (int x = 0; x < 24; x++) {
+                int p = bm.getPixel(x, y);
+                if (Color.alpha(p) < 128) continue;
+                lum += 0.299 * Color.red(p) + 0.587 * Color.green(p) + 0.114 * Color.blue(p);
+                n++;
+            }
+            bm.recycle();
+            return n > 0 && lum / n > 150;
+        } catch (RuntimeException e) { return false; }
     }
 
     // ---------------------------------------------------------------- wallpaper
@@ -901,6 +1013,14 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(w, h);
         p.setMargins(l, t, r, b);
         return p;
+    }
+
+    /** Mix t of colour b into colour a, keeping a's alpha. */
+    private static int blend(int a, int b, float t) {
+        return Color.argb(Color.alpha(a),
+                (int) (Color.red(a) + (Color.red(b) - Color.red(a)) * t),
+                (int) (Color.green(a) + (Color.green(b) - Color.green(a)) * t),
+                (int) (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t));
     }
 
     private static int withAlpha(int c, float a) {
