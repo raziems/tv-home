@@ -122,10 +122,16 @@ public class MainActivity extends Activity {
         liveTvPkg = getString(R.string.live_tv_package);
         inputPickerPkg = getString(R.string.input_picker_package);
         cols = getResources().getInteger(R.integer.columns);
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         setContentView(buildUi());
+        // Fullscreen via the API 30 insets controller (the SYSTEM_UI_FLAG_* route is deprecated and
+        // target 35+ draws edge-to-edge by default anyway). Must run after setContentView: the
+        // controller belongs to the decor view, which does not exist before that.
+        getWindow().setDecorFitsSystemWindows(false);
+        android.view.WindowInsetsController ic = getWindow().getDecorView().getWindowInsetsController();
+        if (ic != null) {
+            ic.hide(android.view.WindowInsets.Type.systemBars());
+            ic.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        }
         buildApps();
 
         IntentFilter pf = new IntentFilter();
@@ -133,7 +139,13 @@ public class MainActivity extends Activity {
         pf.addAction(Intent.ACTION_PACKAGE_REMOVED);
         pf.addAction(Intent.ACTION_PACKAGE_CHANGED);
         pf.addDataScheme("package");
-        registerReceiver(packages, pf);
+        register(packages, pf);
+    }
+
+    /** Android 14+ (target 34+) insists on an export flag; both receivers only want system broadcasts. */
+    private void register(BroadcastReceiver r, IntentFilter f) {
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(r, f, Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(r, f);
     }
 
     @Override
@@ -144,7 +156,7 @@ public class MainActivity extends Activity {
         tf.addAction(Intent.ACTION_TIMEZONE_CHANGED);
         tf.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
         tf.addAction(ConnectivityManager.CONNECTIVITY_ACTION); // Ethernet plugged or unplugged
-        registerReceiver(tick, tf);
+        register(tick, tf);
         updateClock();
         updateWifi();
         View last = lastFocusedId == View.NO_ID ? null : findViewById(lastFocusedId);

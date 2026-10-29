@@ -11,7 +11,8 @@ cd "$(dirname "$0")"
 JAVA_HOME="${JAVA_HOME:-/c/Program Files/Microsoft/jdk-17.0.21.21-hotspot}"
 SDK="${ANDROID_HOME:-/c/Program Files (x86)/Android/android-sdk}"
 BT="$SDK/build-tools/${BUILD_TOOLS:-36.0.0}"
-JAR="$SDK/platforms/${PLATFORM:-android-35}/android.jar"
+JAR="$SDK/platforms/${PLATFORM:-android-36}/android.jar"
+TARGET_SDK="${TARGET_SDK:-36}"   # Android 16; min stays 30 (Android 11)
 ADB="${ADB:-$LOCALAPPDATA/Microsoft/WinGet/Packages/Google.PlatformTools_Microsoft.Winget.Source_8wekyb3d8bbwe/platform-tools/adb.exe}"
 # TV address: TV_HOST env, else tools/.tv_host (written by tools/find-tv-windows.sh, git-ignored).
 HOST="${TV_HOST:-$(cat ../tools/.tv_host 2>/dev/null || true)}"
@@ -30,7 +31,7 @@ rm -rf "$B" && mkdir -p "$B/gen" "$B/classes" "$B/dex"
 # Assets are NOT passed to aapt2 here: on Windows it writes their zip entries with backslashes
 # (assets/wallpapers\01.jpg), which AssetManager.list() can't see. jar adds them below instead.
 "$BT/aapt2.exe" link -o "$B/base.apk" -I "$(W "$JAR")" --manifest AndroidManifest.xml --java "$B/gen" \
-  --min-sdk-version 30 --target-sdk-version 30 "$B/res.zip"
+  --min-sdk-version 30 --target-sdk-version "$TARGET_SDK" "$B/res.zip"
 javac -nowarn -Xlint:-options -encoding UTF-8 --release 11 -classpath "$(W "$JAR")" -d "$B/classes" \
   $(find src "$B/gen" -name '*.java')
 java -cp "$(W "$BT/lib/d8.jar")" com.android.tools.r8.D8 --min-api 30 --lib "$(W "$JAR")" \
