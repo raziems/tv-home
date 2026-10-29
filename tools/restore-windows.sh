@@ -24,7 +24,7 @@ sh cmd package set-home-activity --user 0 "$STOCK_LAUNCHER/.MainActivity"
 sh am force-stop com.mihir.tvhome
 if [ "${UNINSTALL:-0}" = "1" ]; then sh pm uninstall com.mihir.tvhome; fi
 if [ -n "${1:-}" ]; then
-  grep -vE '^\s*(#|$)' "$1" | awk '{print $1}' | while read -r p; do sh pm enable "$p"; done
+  grep -vE '^\s*(#|$)' "$1" | awk '{print $1}' | while read -r p; do sh pm enable "$p" < /dev/null; done   # </dev/null: adb must not eat the list
 fi
 sh am force-stop com.android.tv.settings
 sh input keyevent KEYCODE_HOME

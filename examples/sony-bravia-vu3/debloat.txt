@@ -1,0 +1,41 @@
+# Sony BRAVIA VU3 (BRAVIA_VU3_4K, Realtek), Google TV / Android 14, build UKR1.240726.001, 2 GB RAM
+# Everything here is DISABLED for user 0, never uninstalled.
+# Apply: tools/disable-windows.sh examples/sony-bravia-vu3/debloat.txt   Undo: tools/restore-windows.sh <same file>
+# The stock launcher (com.google.android.apps.tv.launcherx) and the Google setup app
+# (com.google.android.tungsten.setupwraith, which hijacks Home on Google TV) are disabled by
+# launcher/build-windows.sh with DISABLE_SETUPWRAITH=1, not here.
+# Answers for this household: keeps Chromecast built-in and AirPlay/HomeKit; no Assistant voice
+# search, no Sony Pictures Core. Already disabled before we started: YouTube Music, Prime Video,
+# Sony promos, Sony IoT/B2B services.
+
+# Google extras
+com.google.android.videos                  # Google TV / Play Movies app
+com.google.android.play.games
+com.google.android.feedback
+android.autoinstalls.config.google.gtvpai  # silently installs promoted apps
+com.google.android.apps.tv.dreamx          # ambient screensaver with recommendations (basic one stays)
+com.google.android.syncadapters.calendar
+
+# Assistant voice search (the remote's mic button) — not used on this TV
+com.google.android.katniss                 # Assistant / search, ~45 MB resident
+com.google.android.tts                     # Google text-to-speech, ~155 MB resident
+
+# Sony clutter
+com.sony.dtv.sonyselect                    # Sony Select recommendations
+com.sony.dtv.sonytab                       # the Sony tab in the stock launcher
+com.sony.dtv.ecodashboard
+com.sony.dtv.multiscreendemo
+com.sony.dtv.smarthelp
+com.sony.dtv.helpguidecontents
+com.sonypicturescore                       # Sony Pictures Core / Bravia Core
+
+# AOSP leftovers that make no sense on a TV
+com.android.gallery3d
+com.android.camera2
+com.android.printspooler
+com.android.wallpaper.livepicker
+
+# Also applied (not package disables): background execution blocked for apps that auto-start at boot
+#   cmd appops set <pkg> RUN_IN_BACKGROUND ignore; cmd appops set <pkg> RUN_ANY_IN_BACKGROUND ignore
+#   for com.wbd.stream, com.tm.unifitv.tv, org.videolan.vlc, com.netflix.ninja (undo: ... allow)
+# Animation scales set to 0.5 (window_animation_scale, transition_animation_scale, animator_duration_scale).

@@ -167,7 +167,8 @@ Change the dock: edit `config.xml`, then run `launcher/build-and-install.sh`.
 Android TV and Google TV: TCL, Xiaomi/Redmi, Hisense, Sony, OnePlus, Realme, Nvidia Shield,
 Chromecast with Google TV and most others. Not Samsung (Tizen), LG (webOS) or Fire TV.
 Tested on: TCL Google TV (Android 11, macOS build), Sony BRAVIA VU2 (Android TV 11, Realtek,
-Windows build — see `examples/sony-bravia-vu2/`). Add yours to `examples/`.
+Windows build — see `examples/sony-bravia-vu2/`), Sony BRAVIA VU3 (Google TV / Android 14, Realtek,
+Windows build with `DISABLE_SETUPWRAITH=1` — see `examples/sony-bravia-vu3/`). Add yours to `examples/`.
 
 ## Credits
 

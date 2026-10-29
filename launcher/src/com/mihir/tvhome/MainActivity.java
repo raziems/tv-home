@@ -591,8 +591,18 @@ public class MainActivity extends Activity {
         // Ports with a cable report CONNECTED; an empty HDMI port reports CONNECTED_STANDBY (that is what
         // the hotplug line maps to). Empty ports are listed last and dimmed, like Sony's own source menu.
         List<TvInputInfo> live = new ArrayList<>(), dead = new ArrayList<>();
+        List<TvInputInfo> all = new ArrayList<>();
+        Set<String> portsWithDevice = new HashSet<>(), seenLabels = new HashSet<>();
         if (tim != null) for (TvInputInfo t : tim.getTvInputList()) {
             if (!t.isPassthroughInput() || t.isHidden(this)) continue;
+            all.add(t);
+            if (t.getParentId() != null) portsWithDevice.add(t.getParentId());
+        }
+        for (TvInputInfo t : all) {
+            // Android 14 lists a CEC device (soundbar, console) as its own input under the HDMI port, once per
+            // logical address. Show the device instead of the bare port, and only once.
+            if (t.getParentId() == null && portsWithDevice.contains(t.getId())) continue;
+            if (!seenLabels.add(inputLabel(t))) continue;
             int state = TvInputManager.INPUT_STATE_CONNECTED;
             try { state = tim.getInputState(t.getId()); } catch (IllegalArgumentException ignored) { }
             (state == TvInputManager.INPUT_STATE_CONNECTED ? live : dead).add(t);
@@ -630,7 +640,11 @@ public class MainActivity extends Activity {
     private String inputLabel(TvInputInfo t) {
         CharSequence c = t.loadCustomLabel(this);
         if (c == null || c.length() == 0) c = t.loadLabel(this);
-        return String.valueOf(c);
+        String s = String.valueOf(c);
+        // A CEC device's label comes as "BD SYSTEM (HDMI 3 (eARC/ARC))"; show it as "HDMI 3 (eARC/ARC) · BD SYSTEM".
+        int p = s.indexOf(" (");
+        if (t.getParentId() != null && p > 0 && s.endsWith(")")) s = s.substring(p + 2, s.length() - 1) + " · " + s.substring(0, p);
+        return s;
     }
 
     private void switchToInput(TvInputInfo t) {

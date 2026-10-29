@@ -17,7 +17,10 @@
     <!-- Never shown as tiles: system helpers, and the Live TV app (it's in the Inputs menu). -->
     <string-array name="hidden_apps">
         <item>com.android.tv</item>
+        <item>com.android.tv.settings</item>
         <item>com.sony.dtv.timers</item>
+        <item>com.sony.dtv.ecodashboard</item>
+        <item>com.sony.dtv.smarthelp</item>
     </string-array>
 
     <!-- The TV's Live TV / tuner app, listed last in the Inputs menu. Empty to leave it out.

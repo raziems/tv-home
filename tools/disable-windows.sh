@@ -12,5 +12,5 @@ HOST="${TV_HOST:-$(cat tools/.tv_host 2>/dev/null || true)}"
 TV="$HOST:${TV_PORT:-5555}"
 "$ADB" connect "$TV" >/dev/null
 grep -vE '^\s*(#|$)' "$LIST" | awk '{print $1}' | while read -r p; do
-  echo "$p -> $("$ADB" -s "$TV" shell pm disable-user --user 0 "$p" | tr -d '\r')"
+  echo "$p -> $("$ADB" -s "$TV" shell pm disable-user --user 0 "$p" < /dev/null | tr -d '\r')"   # </dev/null: adb must not eat the list
 done
