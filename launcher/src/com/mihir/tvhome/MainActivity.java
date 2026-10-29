@@ -129,7 +129,7 @@ public class MainActivity extends Activity {
         hidden.add(getPackageName());
         liveTvPkg = getString(R.string.live_tv_package);
         inputPickerPkg = getString(R.string.input_picker_package);
-        cols = getResources().getInteger(R.integer.columns);
+        cols = Math.max(1, getResources().getInteger(R.integer.columns));
         userHidden.addAll(getSharedPreferences("launcher", MODE_PRIVATE).getStringSet("hidden", new HashSet<>()));
         String savedDock = getSharedPreferences("launcher", MODE_PRIVATE).getString("dock", null);
         if (savedDock == null) dockOrder.addAll(Arrays.asList(dockApps));
@@ -208,14 +208,17 @@ public class MainActivity extends Activity {
         super.onNewIntent(intent);
         // Home pressed while already home: jump back to the first dock app.
         if (inputsPopup != null) inputsPopup.dismiss();
-        if (!dockCards.isEmpty()) dockCards.get(0).requestFocus();
+        if (tileMenu != null) tileMenu.dismiss();
+        View first = firstTile();
+        if (first != null) first.requestFocus();
         scroll.smoothScrollTo(0, 0);
     }
 
     @Override
     public void onBackPressed() {
         // Home has nowhere to go back to; Back from the grid returns to the dock.
-        if (scroll.getScrollY() > 0 && !dockCards.isEmpty()) dockCards.get(0).requestFocus();
+        View first = firstTile();
+        if (scroll.getScrollY() > 0 && first != null) first.requestFocus();
     }
 
     // ---------------------------------------------------------------- layout
@@ -400,6 +403,11 @@ public class MainActivity extends Activity {
         Intent q = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);
         Map<String, App> byPkg = new HashMap<>();
         hiddenApps.clear();   // refilled by the loop below; the Hidden apps tile's menu reads it later
+        // Tiles get fresh ids on every rebuild, so remember the focused app by package, not by id.
+        View focusedNow = getCurrentFocus();
+        String keep = focusedNow != null && focusedNow.getTag() instanceof App ? ((App) focusedNow.getTag()).pkg : null;
+        if (tileMenu != null) tileMenu.dismiss();      // their anchors are about to be rebuilt
+        if (inputsPopup != null) inputsPopup.dismiss();
         for (ResolveInfo ri : pm.queryIntentActivities(q, 0)) {
             ActivityInfo ai = ri.activityInfo;
             if (hidden.contains(ai.packageName) || byPkg.containsKey(ai.packageName)) continue;
@@ -470,9 +478,15 @@ public class MainActivity extends Activity {
 
         if (!dock.isEmpty()) { title.setText(dock.get(0).label); setGlow(dock.get(0).color); }
         if (!warmed && !dock.isEmpty()) { warmed = true; warmUpGpu(dock); }
-        View last = lastFocusedId == View.NO_ID ? null : findViewById(lastFocusedId);
-        if (last != null) last.requestFocus();
-        else if (!dockCards.isEmpty()) dockCards.get(0).requestFocus();
+        if (keep == null || !(focusDockApp(keep) || focusGridApp(keep))) {
+            View first = firstTile();
+            if (first != null) first.requestFocus();
+        }
+    }
+
+    /** Where focus lands by default: the first dock tile, or the first grid tile if the dock is empty. */
+    private View firstTile() {
+        return !dockCards.isEmpty() ? dockCards.get(0) : !gridCards.isEmpty() ? gridCards.get(0) : null;
     }
 
     /** A 16:9 card with the app's banner; the name shows under it while focused. */
@@ -580,7 +594,8 @@ public class MainActivity extends Activity {
             p.setNextFocusLeftId(i == 0 ? p.getId() : pills.get(i - 1).getId());
             p.setNextFocusRightId(i == pills.size() - 1 ? p.getId() : pills.get(i + 1).getId());
             p.setNextFocusUpId(p.getId());
-            p.setNextFocusDownId(d > 0 ? dockCards.get(Math.min(d - 1, d / 2)).getId() : p.getId());
+            p.setNextFocusDownId(d > 0 ? dockCards.get(Math.min(d - 1, d / 2)).getId()
+                    : g > 0 ? gridCards.get(Math.min(g - 1, cols / 2)).getId() : p.getId());
         }
         int topId = pills.get(0).getId();
         for (int i = 0; i < d; i++) {
@@ -654,12 +669,13 @@ public class MainActivity extends Activity {
         rows.add(inputRow("App info", false, () -> launch(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                 android.net.Uri.parse("package:" + app.pkg)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))));
         if (inDock) {
-            int at = dockOrder.indexOf(app.pkg);
-            if (at > 0) rows.add(inputRow("Move left", false, () -> {
-                Collections.swap(dockOrder, at, at - 1); saveDock(); buildApps(); focusDockApp(app.pkg);
+            // Swap with the visible neighbour: dockOrder may also hold uninstalled or hidden packages.
+            int vi = dockCards.indexOf(card);
+            if (vi > 0) rows.add(inputRow("Move left", false, () -> {
+                swapDock(app.pkg, ((App) dockCards.get(vi - 1).getTag()).pkg); buildApps(); focusDockApp(app.pkg);
             }));
-            if (at >= 0 && at < dockOrder.size() - 1) rows.add(inputRow("Move right", false, () -> {
-                Collections.swap(dockOrder, at, at + 1); saveDock(); buildApps(); focusDockApp(app.pkg);
+            if (vi >= 0 && vi < dockCards.size() - 1) rows.add(inputRow("Move right", false, () -> {
+                swapDock(app.pkg, ((App) dockCards.get(vi + 1).getTag()).pkg); buildApps(); focusDockApp(app.pkg);
             }));
             rows.add(inputRow("Remove from dock", false, () -> {
                 dockOrder.remove(app.pkg); saveDock(); buildApps(); focusGridApp(app.pkg);
@@ -699,12 +715,19 @@ public class MainActivity extends Activity {
         getSharedPreferences("launcher", MODE_PRIVATE).edit().putString("dock", String.join(",", dockOrder)).apply();
     }
 
-    private void focusDockApp(String pkg) {
-        for (View c : dockCards) if (pkg.equals(((App) c.getTag()).pkg)) { c.requestFocus(); return; }
+    private void swapDock(String a, String b) {
+        int i = dockOrder.indexOf(a), j = dockOrder.indexOf(b);
+        if (i >= 0 && j >= 0) { Collections.swap(dockOrder, i, j); saveDock(); }
     }
 
-    private void focusGridApp(String pkg) {
-        for (View c : gridCards) if (pkg.equals(((App) c.getTag()).pkg)) { c.requestFocus(); return; }
+    private boolean focusDockApp(String pkg) {
+        for (View c : dockCards) if (pkg.equals(((App) c.getTag()).pkg)) { c.requestFocus(); return true; }
+        return false;
+    }
+
+    private boolean focusGridApp(String pkg) {
+        for (View c : gridCards) if (pkg.equals(((App) c.getTag()).pkg)) { c.requestFocus(); return true; }
+        return false;
     }
 
     /** After the grid is rebuilt, stay in it (buildApps would otherwise fall back to the dock). */
@@ -1034,17 +1057,33 @@ public class MainActivity extends Activity {
         getPreferences(MODE_PRIVATE).edit().putInt("wallpaper", wallIndex).apply();
         wallChangedAt = SystemClock.elapsedRealtime();
         String name = "wallpapers/" + wallpapers[wallIndex];
+        int screenW = getResources().getDisplayMetrics().widthPixels;
         new Thread(() -> {
-            Bitmap bm = null;
-            try (java.io.InputStream in = getAssets().open(name)) {
-                BitmapFactory.Options o = new BitmapFactory.Options();
-                o.inPreferredConfig = Bitmap.Config.RGB_565;
-                bm = BitmapFactory.decodeStream(in, null, o);
-            } catch (java.io.IOException ignored) { }
-            Bitmap result = bm;
+            Bitmap result = decodeWallpaper(getAssets(), name, screenW);
             runOnUiThread(() -> showWallpaper(result));
         }).start();
         scheduleWallpaper(WALLPAPER_INTERVAL_MS);
+    }
+
+    /**
+     * Decode a bundled photo no larger than the screen needs (RGB_565, power-of-two subsampling), so
+     * an oversized JPEG dropped into assets/wallpapers costs 4 MB like the others instead of 24 MB.
+     * Returns null on any failure, including running out of memory.
+     */
+    static Bitmap decodeWallpaper(android.content.res.AssetManager assets, String name, int targetW) {
+        try {
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            try (java.io.InputStream in = assets.open(name)) { BitmapFactory.decodeStream(in, null, bounds); }
+            int sample = 1;
+            while (bounds.outWidth > 0 && bounds.outWidth / (sample * 2) >= targetW) sample *= 2;
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inPreferredConfig = Bitmap.Config.RGB_565;
+            o.inSampleSize = sample;
+            try (java.io.InputStream in = assets.open(name)) { return BitmapFactory.decodeStream(in, null, o); }
+        } catch (java.io.IOException | OutOfMemoryError e) {
+            return null;
+        }
     }
 
     private void showWallpaper(Bitmap bm) {

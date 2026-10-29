@@ -39,10 +39,12 @@ public class WallpaperDream extends DreamService {
     private TextView clock, ampm, date;
     private String[] wallpapers = new String[0];
     private int index;
+    private boolean attached;
 
     @Override
     public void onAttachedToWindow() {
         super.onAttachedToWindow();
+        attached = true;
         setInteractive(false);   // any key ends the dream
         setFullscreen(true);
 
@@ -88,6 +90,7 @@ public class WallpaperDream extends DreamService {
 
     @Override
     public void onDetachedFromWindow() {
+        attached = false;
         handler.removeCallbacksAndMessages(null);
         if (back != null) back.setImageDrawable(null);
         if (front != null) front.setImageDrawable(null);
@@ -99,14 +102,9 @@ public class WallpaperDream extends DreamService {
         if (wallpapers.length == 0) return;
         index = (index + 1) % wallpapers.length;
         String name = "wallpapers/" + wallpapers[index];
+        int screenW = getResources().getDisplayMetrics().widthPixels;
         new Thread(() -> {
-            Bitmap bm = null;
-            try (java.io.InputStream in = getAssets().open(name)) {
-                BitmapFactory.Options o = new BitmapFactory.Options();
-                o.inPreferredConfig = Bitmap.Config.RGB_565;
-                bm = BitmapFactory.decodeStream(in, null, o);
-            } catch (java.io.IOException ignored) { }
-            Bitmap result = bm;
+            Bitmap result = MainActivity.decodeWallpaper(getAssets(), name, screenW);
             handler.post(() -> show(result));
         }).start();
         handler.postDelayed(next, INTERVAL_MS);
@@ -115,6 +113,7 @@ public class WallpaperDream extends DreamService {
     /** Swap roles: the old front becomes the back, the new photo fades in on top of it. */
     private void show(Bitmap bm) {
         if (bm == null) return;
+        if (!attached) { bm.recycle(); return; }   // a decode that finished after the dream ended
         ImageView old = front;
         front = back;
         back = old;
