@@ -142,6 +142,11 @@ UNINSTALL=1 tools/restore-windows.sh                           # ...and remove t
 - 12 nature photos crossfade every 10 minutes, with a scrim so text stays readable. Swap them in
   `launcher/assets/wallpapers/` (1920×1080 JPEGs, credits in `launcher/WALLPAPER-CREDITS.md`).
 - Deterministic D-pad focus, remembers the last tile, picks up newly installed apps on return.
+- **Hold OK on a tile** for a menu: Open, App info, Add to dock / Move left / Move right / Remove
+  from dock, and Hide. The dock order and hidden apps are kept in the launcher's preferences, so
+  `config.xml` is only the starting point; a "Hidden apps" tile at the end of the grid brings hidden
+  apps back. To return to `config.xml`'s dock, clear the launcher's data from App info.
+- A screensaver (Settings → Screen saver → "Wallpapers") shows the same photos with the clock.
 
 Change the dock: edit `config.xml`, then run `launcher/build-and-install.sh`.
 

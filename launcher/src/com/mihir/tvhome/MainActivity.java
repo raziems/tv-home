@@ -108,6 +108,8 @@ public class MainActivity extends Activity {
     private int packageSeq;
     private PopupWindow inputsPopup, tileMenu;
     private final Set<String> userHidden = new HashSet<>();   // hidden from the remote; kept in preferences
+    private final List<String> dockOrder = new ArrayList<>();  // config.xml's dock, or the order saved from the remote
+    static final int DOCK_MAX = 7;
     private final List<App> hiddenApps = new ArrayList<>();
 
     private final BroadcastReceiver tick = new BroadcastReceiver() {
@@ -129,6 +131,9 @@ public class MainActivity extends Activity {
         inputPickerPkg = getString(R.string.input_picker_package);
         cols = getResources().getInteger(R.integer.columns);
         userHidden.addAll(getSharedPreferences("launcher", MODE_PRIVATE).getStringSet("hidden", new HashSet<>()));
+        String savedDock = getSharedPreferences("launcher", MODE_PRIVATE).getString("dock", null);
+        if (savedDock == null) dockOrder.addAll(Arrays.asList(dockApps));
+        else for (String p : savedDock.split(",")) if (!p.isEmpty()) dockOrder.add(p);
         for (String s : getResources().getStringArray(R.array.app_colors)) {   // "package=#RRGGBB"
             int eq = s.indexOf('=');
             if (eq <= 0) continue;
@@ -414,7 +419,7 @@ public class MainActivity extends Activity {
         }
 
         List<App> dock = new ArrayList<>();
-        for (String p : dockApps) if (byPkg.containsKey(p)) dock.add(byPkg.remove(p));
+        for (String p : dockOrder) if (byPkg.containsKey(p)) dock.add(byPkg.remove(p));
         List<App> rest = new ArrayList<>(byPkg.values());
         Collections.sort(rest, (x, y) -> x.label.compareToIgnoreCase(y.label));
         Collections.sort(hiddenApps, (x, y) -> x.label.compareToIgnoreCase(y.label));
@@ -537,7 +542,7 @@ public class MainActivity extends Activity {
         if (!inDock) box.addView(label, llp(-1, -2, 0, dp(10), 0, 0));
 
         card.setOnClickListener(v -> { if (app.action != null) app.action.onClick(v); else openApp(app); });
-        if (app.action == null) card.setOnLongClickListener(v -> { showTileMenu(v, app); return true; });
+        if (app.action == null) card.setOnLongClickListener(v -> { showTileMenu(v, app, inDock); return true; });
         card.setOnFocusChangeListener((v, has) -> {
             float s = has ? (inDock ? 1.12f : 1.1f) : 1f;
             v.animate().scaleX(s).scaleY(s).translationZ(has ? dp(14) : 0)
@@ -642,12 +647,30 @@ public class MainActivity extends Activity {
 
     // ---------------------------------------------------------------- long-press menu
 
-    /** Hold OK on a tile: Open, App info, Hide. */
-    private void showTileMenu(View card, App app) {
+    /** Hold OK on a tile: Open, App info, dock editing, Hide. */
+    private void showTileMenu(View card, App app, boolean inDock) {
         List<TextView> rows = new ArrayList<>();
         rows.add(inputRow("Open", false, () -> openApp(app)));
         rows.add(inputRow("App info", false, () -> launch(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                 android.net.Uri.parse("package:" + app.pkg)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))));
+        if (inDock) {
+            int at = dockOrder.indexOf(app.pkg);
+            if (at > 0) rows.add(inputRow("Move left", false, () -> {
+                Collections.swap(dockOrder, at, at - 1); saveDock(); buildApps(); focusDockApp(app.pkg);
+            }));
+            if (at >= 0 && at < dockOrder.size() - 1) rows.add(inputRow("Move right", false, () -> {
+                Collections.swap(dockOrder, at, at + 1); saveDock(); buildApps(); focusDockApp(app.pkg);
+            }));
+            rows.add(inputRow("Remove from dock", false, () -> {
+                dockOrder.remove(app.pkg); saveDock(); buildApps(); focusGridApp(app.pkg);
+            }));
+        } else {
+            boolean room = dockCards.size() < DOCK_MAX;
+            rows.add(inputRow(room ? "Add to dock" : "Dock is full (" + DOCK_MAX + ")", !room, () -> {
+                if (!room) return;
+                dockOrder.remove(app.pkg); dockOrder.add(app.pkg); saveDock(); buildApps(); focusDockApp(app.pkg);
+            }));
+        }
         rows.add(inputRow("Hide", false, () -> {
             int gi = gridCards.indexOf(card);
             userHidden.add(app.pkg);
@@ -670,6 +693,18 @@ public class MainActivity extends Activity {
             }));
         }
         showMenu(card, rows);
+    }
+
+    private void saveDock() {
+        getSharedPreferences("launcher", MODE_PRIVATE).edit().putString("dock", String.join(",", dockOrder)).apply();
+    }
+
+    private void focusDockApp(String pkg) {
+        for (View c : dockCards) if (pkg.equals(((App) c.getTag()).pkg)) { c.requestFocus(); return; }
+    }
+
+    private void focusGridApp(String pkg) {
+        for (View c : gridCards) if (pkg.equals(((App) c.getTag()).pkg)) { c.requestFocus(); return; }
     }
 
     /** After the grid is rebuilt, stay in it (buildApps would otherwise fall back to the dock). */
