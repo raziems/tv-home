@@ -76,9 +76,11 @@ public class MainActivity extends Activity {
         Drawable art;
         boolean isBanner;
         int color;
+        boolean light;   // mostly bright banner: the focus sweep becomes a shadow band
     }
 
     private final Map<String, Integer> colorCache = new HashMap<>();
+    private final Map<String, Integer> colorOverrides = new HashMap<>();   // from config.xml app_colors
     private final List<View> dockCards = new ArrayList<>();
     private final List<View> gridCards = new ArrayList<>();
     private final List<View> pills = new ArrayList<>();
@@ -87,7 +89,8 @@ public class MainActivity extends Activity {
     private LinearLayout content, dockRow;
     private FrameLayout hero;
     private LinearLayout grid;
-    private View glow;
+    private ImageView glow;               // a small radial-gradient bitmap, stretched; colour is a filter
+    private ValueAnimator glowAnim;
     private ImageView wallBack, wallFront;
     private View gridShade;
     private String[] wallpapers = new String[0];
@@ -98,7 +101,6 @@ public class MainActivity extends Activity {
     static final long WALLPAPER_INTERVAL_MS = 10 * 60 * 1000;
     private TextView greeting, clock, ampm, date, title, wifiPill, appsLabel;
     private int glowColor = 0xFF3A3A3A;
-    private ValueAnimator glowAnim;
     private int lastFocusedId = View.NO_ID;
     private boolean firstShow = true;
     private int packageSeq;
@@ -122,6 +124,12 @@ public class MainActivity extends Activity {
         liveTvPkg = getString(R.string.live_tv_package);
         inputPickerPkg = getString(R.string.input_picker_package);
         cols = getResources().getInteger(R.integer.columns);
+        for (String s : getResources().getStringArray(R.array.app_colors)) {   // "package=#RRGGBB"
+            int eq = s.indexOf('=');
+            if (eq <= 0) continue;
+            try { colorOverrides.put(s.substring(0, eq).trim(), Color.parseColor(s.substring(eq + 1).trim())); }
+            catch (IllegalArgumentException ignored) { }
+        }
         setContentView(buildUi());
         // Fullscreen via the API 30 insets controller (the SYSTEM_UI_FLAG_* route is deprecated and
         // target 35+ draws edge-to-edge by default anyway). Must run after setContentView: the
@@ -223,7 +231,9 @@ public class MainActivity extends Activity {
             wallpapers = getAssets().list("wallpapers");
         } catch (java.io.IOException ignored) { }
 
-        glow = new View(this);
+        glow = new ImageView(this);
+        glow.setScaleType(ImageView.ScaleType.FIT_XY);
+        glow.setImageBitmap(glowBitmap());
         root.addView(glow, new FrameLayout.LayoutParams(-1, -1));
         setGlow(glowColor);
 
@@ -267,8 +277,8 @@ public class MainActivity extends Activity {
         dockRow.setPadding(dp(20), dp(22), dp(20), dp(22));
         GradientDrawable band = new GradientDrawable();
         band.setCornerRadius(dp(26));
-        band.setColor(0x1FFFFFFF);
-        band.setStroke(dp(1), 0x14FFFFFF);
+        band.setColor(0x61080612);   // dark tint, so white tiles have an edge to lift from
+        band.setStroke(dp(1), 0x1AFFFFFF);
         dockRow.setBackground(band);
         bottom.addView(dockRow, new LinearLayout.LayoutParams(-1, -2));
 
@@ -351,7 +361,7 @@ public class MainActivity extends Activity {
             tintPillIcon((TextView) v, has ? 0xFF111111 : 0xE6FFFFFF);
             v.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f)
                     .setInterpolator(new OvershootInterpolator(2f)).setDuration(220).start();
-            if (has) { lastFocusedId = v.getId(); scroll.smoothScrollTo(0, 0); fadeGlow(1f); }
+            if (has) { lastFocusedId = v.getId(); scroll.smoothScrollTo(0, 0); dimDock(-1); fadeGlow(1f); }
         });
         return p;
     }
@@ -388,7 +398,9 @@ public class MainActivity extends Activity {
             if (banner == null) banner = ai.applicationInfo.loadBanner(pm);
             a.isBanner = banner != null;
             a.art = banner != null ? banner : ri.loadIcon(pm);
-            a.color = sampleColor(a.pkg, a.art);
+            Integer forced = colorOverrides.get(a.pkg);
+            a.color = forced != null ? forced : sampleColor(a.pkg, a.art);
+            a.light = isLight(a.art);
             byPkg.put(a.pkg, a);
         }
 
@@ -470,16 +482,29 @@ public class MainActivity extends Activity {
             img.setPadding(dp(22), dp(14), dp(22), dp(14));
         }
 
-        // Focus ring and sheen, drawn above the art.
+        // Focus ring and sheen, drawn above the art: a white ring inside a thin dark one, so it
+        // reads on white banners as well as dark ones.
+        GradientDrawable outer = new GradientDrawable();
+        outer.setCornerRadius(dp(10));
+        outer.setStroke(dp(1), 0xA6000000);
         GradientDrawable ring = new GradientDrawable();
-        ring.setCornerRadius(dp(10));
+        ring.setCornerRadius(dp(9));
         ring.setStroke(dp(2), 0xE6FFFFFF);
         ring.setOrientation(GradientDrawable.Orientation.TL_BR);
         ring.setColors(new int[]{0x26FFFFFF, 0x00FFFFFF, 0x00FFFFFF});
+        android.graphics.drawable.LayerDrawable rings = new android.graphics.drawable.LayerDrawable(new Drawable[]{outer, ring});
+        rings.setLayerInset(1, dp(1), dp(1), dp(1), dp(1));
         View shine = new View(this);
-        shine.setBackground(ring);
+        shine.setBackground(rings);
         shine.setAlpha(0f);
         card.addView(shine, new FrameLayout.LayoutParams(-1, -1));
+        // A band of light (a shadow band on bright banners) that sweeps across once on focus.
+        int sweepColor = app.light ? 0x29000000 : 0x61FFFFFF;
+        View sweep = new View(this);
+        sweep.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{sweepColor & 0x00FFFFFF, sweepColor, sweepColor & 0x00FFFFFF}));
+        sweep.setAlpha(0f);
+        card.addView(sweep, new FrameLayout.LayoutParams(-1, -1));
 
         box.addView(card, new LinearLayout.LayoutParams(-1, -2));
 
@@ -508,8 +533,11 @@ public class MainActivity extends Activity {
                 title.animate().alpha(1f).setDuration(200).start();
                 animateGlow(app.color);
                 fadeGlow(1f);
+                dimDock(dockCards.indexOf(v));
+                runSweep(sweep, v);
                 scroll.smoothScrollTo(0, 0);
             } else {
+                dimDock(-1);
                 fadeGlow(0.35f);
                 title.animate().alpha(0f).setDuration(200).start();
                 scrollToRow(box);
@@ -724,14 +752,25 @@ public class MainActivity extends Activity {
 
     // ---------------------------------------------------------------- glow
 
+    /**
+     * The glow's shape, drawn once as a small white-on-transparent radial gradient. The ImageView
+     * stretches it to the screen and tints it, so a colour change is one textured quad per frame.
+     * Drawing a full-screen GradientDrawable every frame cost ~40 ms a frame on the Realtek GPU.
+     */
+    private Bitmap glowBitmap() {
+        int w = 320, h = 180;
+        Bitmap bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        p.setShader(new android.graphics.RadialGradient(w * 0.5f, h * 0.78f, w * 0.62f,
+                new int[]{0x80FFFFFF, 0x24FFFFFF, 0x00FFFFFF}, new float[]{0f, 0.5f, 1f},
+                android.graphics.Shader.TileMode.CLAMP));
+        new Canvas(bm).drawRect(0, 0, w, h, p);
+        return bm;
+    }
+
     private void setGlow(int color) {
         glowColor = color;
-        GradientDrawable g = new GradientDrawable();
-        g.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        g.setGradientCenter(0.5f, 0.78f);
-        g.setGradientRadius(getResources().getDisplayMetrics().widthPixels * 0.62f);
-        g.setColors(new int[]{withAlpha(color, 0.5f), withAlpha(color, 0.14f), Color.TRANSPARENT});
-        glow.setBackground(g);
+        glow.setColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN);
     }
 
     private void animateGlow(int to) {
@@ -740,6 +779,42 @@ public class MainActivity extends Activity {
         glowAnim.setDuration(450);
         glowAnim.addUpdateListener(a -> setGlow((int) a.getAnimatedValue()));
         glowAnim.start();
+    }
+
+    /** Dock tiles other than the focused one sit at 72%; -1 restores them all (focus left the dock). */
+    private void dimDock(int focusedIdx) {
+        for (int i = 0; i < dockCards.size(); i++) {
+            dockCards.get(i).animate().alpha(focusedIdx < 0 || i == focusedIdx ? 1f : 0.72f).setDuration(260).start();
+        }
+    }
+
+    private void runSweep(View sweep, View card) {
+        if (card.getWidth() == 0) { card.post(() -> runSweep(sweep, card)); return; }
+        float w = card.getWidth();
+        sweep.animate().cancel();
+        sweep.setTranslationX(-w);
+        sweep.setAlpha(1f);
+        sweep.animate().translationX(w).setDuration(650).setInterpolator(new DecelerateInterpolator(1.2f))
+                .withEndAction(() -> sweep.setAlpha(0f)).start();
+    }
+
+    /** Is the banner mostly bright? Then the focus sweep is a shadow band rather than a light one. */
+    private boolean isLight(Drawable d) {
+        try {
+            Bitmap bm = Bitmap.createBitmap(24, 14, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(bm);
+            d.setBounds(0, 0, 24, 14);
+            d.draw(c);
+            double lum = 0; int n = 0;
+            for (int y = 0; y < 14; y++) for (int x = 0; x < 24; x++) {
+                int p = bm.getPixel(x, y);
+                if (Color.alpha(p) < 128) continue;
+                lum += 0.299 * Color.red(p) + 0.587 * Color.green(p) + 0.114 * Color.blue(p);
+                n++;
+            }
+            bm.recycle();
+            return n > 0 && lum / n > 150;
+        } catch (RuntimeException e) { return false; }
     }
 
     private void fadeGlow(float alpha) {

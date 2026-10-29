@@ -31,6 +31,12 @@
          Sony has no separate picker; Live Channels handles passthrough inputs. -->
     <string name="input_picker_package" translatable="false">com.android.tv</string>
 
+    <!-- Glow colour per app, "package=#RRGGBB". Apps not listed get a colour sampled from their banner. -->
+    <string-array name="app_colors">
+        <item>com.netflix.ninja=#F5273C</item>
+        <item>com.google.android.youtube.tv=#F764F7</item>
+    </string-array>
+
     <!-- Tiles per row in the grid. -->
     <integer name="columns">5</integer>
 </resources>
