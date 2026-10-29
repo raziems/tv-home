@@ -102,6 +102,7 @@ public class MainActivity extends Activity {
     private TextView greeting, clock, ampm, date, title, wifiPill, appsLabel;
     private int glowColor = 0xFF3A3A3A;
     private int lastFocusedId = View.NO_ID;
+    private boolean warmed;
     private boolean firstShow = true;
     private int packageSeq;
     private PopupWindow inputsPopup;
@@ -218,10 +219,11 @@ public class MainActivity extends Activity {
         wallFront = wallpaperLayer();
         root.addView(wallBack, new FrameLayout.LayoutParams(-1, -1));
         root.addView(wallFront, new FrameLayout.LayoutParams(-1, -1));
-        // Scrim: darker at the top (clock, pills) and bottom (dock) so text stays readable.
-        View scrim = new View(this);
-        scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0xB3000000, 0x40000000, 0x26000000, 0x8C000000, 0xE6000000}));
+        // Scrim: darker at the top (clock, pills) and bottom (dock) so text stays readable. A 1x256
+        // gradient bitmap stretched to the screen, not a GradientDrawable: see glowBitmap().
+        ImageView scrim = new ImageView(this);
+        scrim.setScaleType(ImageView.ScaleType.FIT_XY);
+        scrim.setImageBitmap(scrimBitmap());
         root.addView(scrim, new FrameLayout.LayoutParams(-1, -1));
         gridShade = new View(this);
         gridShade.setBackgroundColor(0xB3000000);
@@ -444,6 +446,7 @@ public class MainActivity extends Activity {
         wireFocus();
 
         if (!dock.isEmpty()) { title.setText(dock.get(0).label); setGlow(dock.get(0).color); }
+        if (!warmed && !dock.isEmpty()) { warmed = true; warmUpGpu(dock); }
         View last = lastFocusedId == View.NO_ID ? null : findViewById(lastFocusedId);
         if (last != null) last.requestFocus();
         else if (!dockCards.isEmpty()) dockCards.get(0).requestFocus();
@@ -768,10 +771,60 @@ public class MainActivity extends Activity {
         return bm;
     }
 
+    private Bitmap scrimBitmap() {
+        int h = 256;
+        Bitmap bm = Bitmap.createBitmap(1, h, Bitmap.Config.ARGB_8888);
+        android.graphics.Paint p = new android.graphics.Paint();
+        p.setShader(new android.graphics.LinearGradient(0, 0, 0, h,
+                new int[]{0xB3000000, 0x40000000, 0x26000000, 0x8C000000, 0xE6000000},
+                new float[]{0f, 0.25f, 0.5f, 0.75f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+        new Canvas(bm).drawRect(0, 0, 1, h, p);
+        return bm;
+    }
+
     private void setGlow(int color) {
         glowColor = color;
         glow.setColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN);
     }
+
+    /**
+     * The first D-pad presses used to stall at 17-19 ms a frame while the GPU met new work for the
+     * first time: the sweep gradient, the ring layers, and the glyphs of each app name in the title's
+     * font. Draw all of that once now, at 1% alpha in a corner, then remove it.
+     */
+    private void warmUpGpu(List<App> dock) {
+        FrameLayout root = (FrameLayout) getWindow().getDecorView().findViewById(android.R.id.content);
+        LinearLayout warm = new LinearLayout(this);
+        warm.setAlpha(0.01f);
+        StringBuilder names = new StringBuilder();
+        for (App a : dock) names.append(a.label).append(' ');
+        TextView t = text(34, "sans-serif-light", Color.WHITE);
+        t.setText(names.toString());
+        warm.addView(t, new LinearLayout.LayoutParams(-2, -2));
+        View sweep = new View(this);
+        sweep.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0x00FFFFFF, 0x61FFFFFF, 0x00FFFFFF}));
+        warm.addView(sweep, new LinearLayout.LayoutParams(dp(24), dp(14)));
+        View dark = new View(this);
+        dark.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0x00000000, 0x29000000, 0x00000000}));
+        warm.addView(dark, new LinearLayout.LayoutParams(dp(24), dp(14)));
+        GradientDrawable outer = new GradientDrawable();
+        outer.setCornerRadius(dp(10));
+        outer.setStroke(dp(1), 0xA6000000);
+        GradientDrawable ring = new GradientDrawable();
+        ring.setCornerRadius(dp(9));
+        ring.setStroke(dp(2), 0xE6FFFFFF);
+        ring.setOrientation(GradientDrawable.Orientation.TL_BR);
+        ring.setColors(new int[]{0x26FFFFFF, 0x00FFFFFF, 0x00FFFFFF});
+        android.graphics.drawable.LayerDrawable rings = new android.graphics.drawable.LayerDrawable(new Drawable[]{outer, ring});
+        rings.setLayerInset(1, dp(1), dp(1), dp(1), dp(1));
+        View ringV = new View(this);
+        ringV.setBackground(rings);
+        warm.addView(ringV, new LinearLayout.LayoutParams(dp(24), dp(14)));
+        root.addView(warm, new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END));
+        handler.postDelayed(() -> root.removeView(warm), 600);
+        animateGlow(glowColor ^ 0x000001);   // a 1-step colour fade: exercises the filter animation path
+    }
+
 
     private void animateGlow(int to) {
         if (glowAnim != null) glowAnim.cancel();
