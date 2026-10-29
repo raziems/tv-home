@@ -447,11 +447,14 @@ public class MainActivity extends Activity {
         dockCards.clear();
         gridCards.clear();
 
-        for (int i = 0; i < dock.size(); i++) {
-            View tile = tile(dock.get(i), true);
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -2, 1f);
-            p.setMargins(i == 0 ? 0 : dp(10), 0, i == dock.size() - 1 ? 0 : dp(10), 0);
-            dockRow.addView(tile, p);
+        // Tiles share the band equally, but never fewer than five slots: with one or two apps the
+        // tiles keep their normal size on the left instead of stretching across the band.
+        int slots = Math.max(dock.size(), 5);
+        for (int i = 0; i < slots; i++) {
+            View v = i < dock.size() ? tile(dock.get(i), true) : new View(this);
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, i < dock.size() ? -2 : 1, 1f);
+            p.setMargins(i == 0 ? 0 : dp(10), 0, i == slots - 1 ? 0 : dp(10), 0);
+            dockRow.addView(v, p);
         }
 
         LinearLayout row = null;
