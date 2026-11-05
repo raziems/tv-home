@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hotkey_service_description">Opens the app for the remote\'s Netflix and YouTube buttons. Only watches key presses; reads nothing on screen.</string>
+</resources>

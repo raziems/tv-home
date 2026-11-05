@@ -72,4 +72,9 @@ sh settings put secure screensaver_enabled 1
 sh am force-stop com.android.tv.settings
 sh am force-stop com.mihir.tvhome
 sh input keyevent KEYCODE_HOME
+# The remote's Netflix / YouTube buttons (HotkeyService, an accessibility key filter; see config.xml
+# hotkeys). Enabled last: force-stopping the launcher above would make Android drop the service again.
+sleep 2
+sh settings put secure enabled_accessibility_services com.mihir.tvhome/.HotkeyService
+sh settings put secure accessibility_enabled 1
 echo "Installed. Press Home on the remote. Undo with tools/restore-windows.sh"

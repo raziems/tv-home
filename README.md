@@ -149,6 +149,12 @@ UNINSTALL=1 tools/restore-windows.sh                           # ...and remove t
   drops its location grant (the Wi-Fi pill shows "Wi-Fi" instead of the network name) until you run
   the install script again or `adb shell pm grant com.mihir.tvhome android.permission.ACCESS_FINE_LOCATION`.
 - A screensaver (Settings → Screen saver → "Wallpapers") shows the same photos with the clock.
+- **The remote's Netflix / YouTube buttons** keep working. On Google TV sets the manufacturer's
+  key handler asks the stock launcher before opening the app and gives up once that launcher is
+  disabled, so the launcher ships `HotkeyService`, an accessibility key filter that opens the app
+  itself. Map buttons to apps in `config.xml` (`hotkeys`, "KEYCODE_NAME=package"); the Windows
+  install script enables the service. To find a button's key code, press it and run
+  `adb logcat -s tvhome.Hotkey`.
 
 Change the dock: edit `config.xml`, then run `launcher/build-and-install.sh`.
 
