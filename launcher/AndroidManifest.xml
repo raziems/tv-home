@@ -18,6 +18,7 @@
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
         </intent>
         <package android:name="com.android.tv" />
+        <package android:name="com.sony.dtv.tvx" />
     </queries>
 
     <application

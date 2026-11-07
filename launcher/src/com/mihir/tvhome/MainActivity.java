@@ -127,8 +127,8 @@ public class MainActivity extends Activity {
         dockApps = getResources().getStringArray(R.array.dock_apps);
         hidden.addAll(Arrays.asList(getResources().getStringArray(R.array.hidden_apps)));
         hidden.add(getPackageName());
-        liveTvPkg = getString(R.string.live_tv_package);
-        inputPickerPkg = getString(R.string.input_picker_package);
+        liveTvPkg = firstInstalled(getResources().getStringArray(R.array.live_tv_packages));
+        inputPickerPkg = firstInstalled(getResources().getStringArray(R.array.input_picker_packages));
         cols = Math.max(1, getResources().getInteger(R.integer.columns));
         userHidden.addAll(getSharedPreferences("launcher", MODE_PRIVATE).getStringSet("hidden", new HashSet<>()));
         String savedDock = getSharedPreferences("launcher", MODE_PRIVATE).getString("dock", null);
@@ -1172,6 +1172,12 @@ public class MainActivity extends Activity {
         } catch (RuntimeException e) {
             return false;
         }
+    }
+
+    /** The first of these packages that is installed, or "" so the feature stays off. */
+    private String firstInstalled(String[] pkgs) {
+        for (String p : pkgs) if (isInstalled(p)) return p;
+        return "";
     }
 
     private boolean isInstalled(String pkg) {

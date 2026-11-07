@@ -181,7 +181,10 @@ Android TV and Google TV: TCL, Xiaomi/Redmi, Hisense, Sony, OnePlus, Realme, Nvi
 Chromecast with Google TV and most others. Not Samsung (Tizen), LG (webOS) or Fire TV.
 Tested on: TCL Google TV (Android 11, macOS build), Sony BRAVIA VU2 (Android TV 11, Realtek,
 Windows build — see `examples/sony-bravia-vu2/`), Sony BRAVIA VU3 (Google TV / Android 14, Realtek,
-Windows build with `DISABLE_SETUPWRAITH=1` — see `examples/sony-bravia-vu3/`). Add yours to `examples/`.
+Windows build with `DISABLE_SETUPWRAITH=1` — see `examples/sony-bravia-vu3/`), Sony BRAVIA VH2 =
+KD-55X80J (Google TV / Android 12, MediaTek, `DISABLE_SETUPWRAITH=1` — see `examples/sony-bravia-vh2/`;
+its Live TV app is `com.sony.dtv.tvx`, which is why `live_tv_packages` in config.xml is a list: the
+first installed one is used, so one config serves several TVs). Add yours to `examples/`.
 
 ## Credits
 

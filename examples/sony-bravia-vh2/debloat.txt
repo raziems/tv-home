@@ -1,0 +1,82 @@
+# Sony BRAVIA VH2 = KD-55X80J (MediaTek), Google TV / Android 12, build STT2.230505.001.S136, 3 GB RAM
+# Everything here is DISABLED for user 0, never uninstalled.
+# Apply: tools/disable-windows.sh examples/sony-bravia-vh2/debloat.txt   Undo: tools/restore-windows.sh <same file>
+# The stock launcher (com.google.android.apps.tv.launcherx) and the Google setup app
+# (com.google.android.tungsten.setupwraith) are disabled by launcher/build-windows.sh with DISABLE_SETUPWRAITH=1.
+# Answers for this household: keeps Chromecast built-in and AirPlay/HomeKit; no Assistant voice
+# search; no YouTube Music, Play Games or Sony Pictures Core. Already disabled before we started:
+# Prime Video, HomeKit, Sony IoT, B2B vendor protocol, soft AP, kenhchonloc.
+# Kept on purpose: com.sony.dtv.tvx and tvinput.* (Live TV / HDMI), braviasync* and
+# HomeTheatreControl (HDMI-CEC, soundbar), audiooutput, globalkeyoverlay and remotecontrolsettings
+# (remote buttons), sonysystemservice, systemupdate/update, b2b.frameworkextension (a dependency).
+
+# Google extras
+com.google.android.videos                  # Google TV / Play Movies app
+com.google.android.play.games
+com.google.android.youtube.tvmusic
+com.google.android.feedback
+com.google.android.apps.tv.dreamx          # ambient screensaver with recommendations (replaced by ours)
+com.google.android.syncadapters.calendar
+android.autoinstalls.config.sony.bravia    # silently installs promoted apps
+
+# Assistant voice search (the remote's mic button) — not used on this TV
+com.google.android.katniss                 # Assistant / search, ~75 MB resident
+com.google.android.tts                     # Google text-to-speech
+com.sony.dtv.voicesearch
+
+# Viewing-data collection
+tv.samba.ssm                               # Samba TV automatic content recognition (ad tracking)
+tv.samba.ssm.ui
+com.sonyericsson.idd.agent                 # Sony telemetry agent
+com.qterics.da.product                     # Sony data-analytics partner
+com.sony.dtv.da.service
+com.sony.dtv.sonybugreportsys
+
+# Sony promos, demos, recommendations and bundled apps
+com.sony.dtv.promos
+com.sony.dtv.sonyselect
+com.sony.dtv.sonytab
+com.sony.dtv.recapp                        # recommendations
+com.sony.dtv.livingfit
+com.sony.dtv.smartmediaapp
+com.sony.dtv.osat.music
+com.sony.dtv.notificationcenter
+com.sony.dtv.ecodashboard
+com.sony.dtv.smarthelp
+com.sony.dtv.helpguidecontents
+com.sony.dtv.customersupport
+com.sony.dtv.customersupport.provider.res
+com.sony.dtv.demosupport
+com.sony.dtv.demosystemsupport
+com.sony.dtv.multiscreendemo
+com.sony.dtv.launcherxcustomizer           # feeds rows into the (disabled) stock launcher
+com.sonypicturescore                       # Sony Pictures Core / Bravia Core
+com.vewd.core.integration.dia              # the Vewd web browser app
+
+# Hotel / business mode and the optional camera accessory (not in a home)
+com.sony.dtv.b2b.adminpassword
+com.sony.dtv.b2b.deviceadminsettings
+com.sony.dtv.b2b.hotelmode
+com.sony.dtv.b2b.importexport
+com.sony.dtv.b2b.ipcontrolsettings
+com.sony.dtv.b2b.noderuntime.normal
+com.sony.dtv.b2b.noderuntime.privilege
+com.sony.dtv.b2b.noderuntimeextension.bpk
+com.sony.dtv.b2b.noderuntimeextension.node_20_11_1
+com.sony.dtv.b2b.prosettings
+com.sony.dtv.b2b.rs232csupport
+com.sony.dtv.b2b.webappruntimedrm
+com.sony.dtv.sensingcamera.fwupdate
+com.sony.dtv.sensingcamera.settings
+com.sony.dtv.sensingfusionservice
+com.sony.dtv.distancealert
+com.sony.dtv.gestureapp
+
+# AOSP leftovers that make no sense on a TV
+com.android.dreams.basic
+com.android.printspooler
+
+# Also applied (not package disables): background execution blocked for apps that auto-start at boot
+#   cmd appops set <pkg> RUN_IN_BACKGROUND ignore; cmd appops set <pkg> RUN_ANY_IN_BACKGROUND ignore
+#   for com.wbd.stream, com.tm.unifitv.tv, org.videolan.vlc, com.netflix.ninja, com.playstation.remoteplay.tv
+# Animation scales set to 0.5 (window_animation_scale, transition_animation_scale, animator_duration_scale).

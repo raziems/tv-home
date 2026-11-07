@@ -12,24 +12,33 @@
         <item>com.tm.unifitv.tv</item>
         <item>com.wbd.stream</item>
         <item>com.spotify.tv.android</item>
+        <item>com.apple.atve.sony.appletv</item>
     </string-array>
 
     <!-- Never shown as tiles: system helpers, and the Live TV app (it's in the Inputs menu). -->
     <string-array name="hidden_apps">
         <item>com.android.tv</item>
+        <item>com.sony.dtv.tvx</item>
         <item>com.android.tv.settings</item>
         <item>com.sony.dtv.timers</item>
         <item>com.sony.dtv.ecodashboard</item>
         <item>com.sony.dtv.smarthelp</item>
     </string-array>
 
-    <!-- The TV's Live TV / tuner app, listed last in the Inputs menu. Empty to leave it out.
-         Sony BRAVIA (Realtek, Android 11) uses Google's Live Channels, com.android.tv. -->
-    <string name="live_tv_package" translatable="false">com.android.tv</string>
+    <!-- The TV's Live TV / tuner app, listed last in the Inputs menu: the first one installed is
+         used, so one config serves several TVs. Sony Realtek sets (VU2, VU3) use Google's Live
+         Channels, com.android.tv; Sony MediaTek sets (VH2 / X80J) use Sony's com.sony.dtv.tvx. -->
+    <string-array name="live_tv_packages">
+        <item>com.sony.dtv.tvx</item>
+        <item>com.android.tv</item>
+    </string-array>
 
     <!-- The manufacturer's own source picker, used if switching to an input directly fails.
-         Sony has no separate picker; Live Channels handles passthrough inputs. -->
-    <string name="input_picker_package" translatable="false">com.android.tv</string>
+         Same rule: the first one installed. -->
+    <string-array name="input_picker_packages">
+        <item>com.sony.dtv.tvx</item>
+        <item>com.android.tv</item>
+    </string-array>
 
     <!-- Glow colour per app, "package=#RRGGBB". Apps not listed get a colour sampled from their banner. -->
     <string-array name="app_colors">
