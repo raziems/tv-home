@@ -48,10 +48,12 @@
 
     <!-- The remote's app buttons, "KEYCODE_NAME=package" (or a numeric key code). Find a button's
          key code with: adb shell dumpsys activity broadcasts history | grep keyCode   after pressing it.
-         Sony BRAVIA Bluetooth remote: Netflix = KEYCODE_BUTTON_4, YouTube = KEYCODE_BUTTON_14. -->
+         Sony remotes: Netflix = KEYCODE_BUTTON_4 on both; YouTube = KEYCODE_BUTTON_14 on the
+         Bluetooth remote (VU3) and KEYCODE_BUTTON_9 on the infrared remote (VH2 / X80J). -->
     <string-array name="hotkeys">
         <item>KEYCODE_BUTTON_4=com.netflix.ninja</item>
         <item>KEYCODE_BUTTON_14=com.google.android.youtube.tv</item>
+        <item>KEYCODE_BUTTON_9=com.google.android.youtube.tv</item>
     </string-array>
 
     <!-- Tiles per row in the grid. -->
